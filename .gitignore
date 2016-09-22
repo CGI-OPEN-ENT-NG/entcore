@@ -20,8 +20,17 @@ test-tmp
 *.class
 mods
 */mods
+*/temp
+dist
+**/ts/entcore
+**/template/entcore
+**/entcore-css-lib
 data
 developer.id
 *.mod.json
 .jshintrc
 Thumbs.db
+bower_components
+**/rev-manifest.json
+node_modules
+auth/src/main/resources/view
