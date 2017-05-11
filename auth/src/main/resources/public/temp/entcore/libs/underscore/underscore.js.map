@@ -1,0 +1,1 @@
+{"version":3,"sources":["entcore/libs/underscore/underscore.ts"],"names":[],"mappings":";;AAAW,QAAA,CAAC,GAAG,OAAO,CAAC,YAAY,CAAC,CAAC","file":"entcore/libs/underscore/underscore.js","sourcesContent":["export var _ = require('underscore');"],"sourceRoot":"/source/"}

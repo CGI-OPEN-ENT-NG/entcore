@@ -1,0 +1,1 @@
+{"version":3,"sources":["toolkit/http.ts"],"names":[],"mappings":";;AAAA,+BAAyB;AAGd,QAAA,GAAG,GAAM,eAAW,CAAC","file":"toolkit/http.js","sourcesContent":["import http from 'axios';\r\nimport { Http as h } from './http.interface';\r\n\r\nexport let Req: h = http as any;\r\nexport { HttpResponse } from './http.interface';"],"sourceRoot":"/source/"}

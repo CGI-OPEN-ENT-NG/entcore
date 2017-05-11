@@ -1,0 +1,1 @@
+{"version":3,"sources":["behaviours.ts"],"names":[],"mappings":"AAEA,UAAU,CAAC,QAAQ,CAAC,MAAM,EAAE,EAE3B,CAAC,CAAC","file":"behaviours.js","sourcesContent":["declare var Behaviours: any;\r\n\r\nBehaviours.register('auth', {\r\n\r\n});"],"sourceRoot":"/source/"}
