@@ -28,10 +28,7 @@ import org.opensaml.common.xml.SAMLConstants;
 import org.opensaml.saml2.core.*;
 import org.opensaml.saml2.core.impl.*;
 import org.opensaml.saml2.encryption.Decrypter;
-import org.opensaml.saml2.metadata.EntityDescriptor;
-import org.opensaml.saml2.metadata.IDPSSODescriptor;
-import org.opensaml.saml2.metadata.SingleLogoutService;
-import org.opensaml.saml2.metadata.SingleSignOnService;
+import org.opensaml.saml2.metadata.*;
 import org.opensaml.saml2.metadata.provider.FilesystemMetadataProvider;
 import org.opensaml.saml2.metadata.provider.MetadataProviderException;
 import org.opensaml.security.MetadataCredentialResolver;
@@ -53,6 +50,7 @@ import org.opensaml.xml.security.keyinfo.StaticKeyInfoCredentialResolver;
 import org.opensaml.xml.security.x509.BasicX509Credential;
 import org.opensaml.xml.signature.Signature;
 import org.opensaml.xml.signature.SignatureTrustEngine;
+import org.opensaml.xml.signature.X509Certificate;
 import org.opensaml.xml.signature.impl.ExplicitKeySignatureTrustEngine;
 import org.opensaml.xml.util.XMLHelper;
 import org.opensaml.xml.validation.ValidationException;
@@ -191,6 +189,14 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		// --- TAG Assertion ---
 		Assertion assertion = generateAssertion(idp, serviceProvider);
 
+		if(assertion == null) {
+			String error = "error building assertion";
+			logger.error(error);
+			JsonObject jsonObject = new JsonObject();
+			jsonObject.putString("error",error);
+			return jsonObject;
+		}
+
 		// -- attribute Destination (acs) --
 		String destination = "https://ts.ac-paris.fr/sso/acs";
 
@@ -223,6 +229,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		logger.info("response : "+ rspWrt.toString());
 		JsonObject jsonObject = new JsonObject();
 		jsonObject.putString("SAMLResponse",rspWrt.toString());
+		jsonObject.putString("destination",destination);
 
 		return jsonObject;
 	}
@@ -314,20 +321,23 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		AttributeStatement attributeStatement = createAttributeStatement(attributes);
 		assertion.getAttributeStatements().add(attributeStatement);
 
-		/*X509Certificate x509Certif = entityDescriptorMap.get(idp).getIDPSSODescriptor("").getKeyDescriptors().get(0).getKeyInfo().getX509Datas().get(0).getX509Certificates().get(0);
+
 		// create credential and initialize
+		SSODescriptor spSSODescriptor = getSSODescriptor(serviceProvider);
+		if(spSSODescriptor == null) {
+			logger.error("error SSODescriptor not found for serviceProvider : " + serviceProvider);
+			return null;
+		}
+		//getIDPSSODescriptor("").getKeyDescriptors().get(0).getKeyInfo().getX509Datas().get(0).getX509Certificates().get(0);
 		BasicX509Credential credential = new BasicX509Credential();
 		credential.setEntityCertificate(x509Certif);
-		credential.setPrivateKey(privateKey);*/
+		credential.setPrivateKey(privateKey);
 
 		JsonObject jsonObject = new JsonObject();
 		String strAssertion = assertion.toString();
 		logger.info("strAssertion : "+ strAssertion);
-		String strSignedAssertion = sign(strAssertion);
-		logger.info("strSignedAssertion : "+ strSignedAssertion);
 
-//		jsonObject.putString("assertion", strAssertion);
-//		jsonObject.putString("assertion-sign", strSignedAssertion);
+
 
 		return  assertion;
 	}
@@ -355,6 +365,17 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		}
 
 		return attributeStatement;
+	}
+
+	private SSODescriptor getSSODescriptor (String serviceProvider) {
+		EntityDescriptor entityDescriptor = entityDescriptorMap.get(serviceProvider);
+
+		if(entityDescriptor == null) {
+			return null;
+		}
+
+		SPSSODescriptor spSSODescriptor = entityDescriptor.getSPSSODescriptor(SAMLConstants.SAML20P_NS);
+		return spSSODescriptor;
 	}
 
 	private AuthnStatement createAuthnStatement(final DateTime issueDate) {

@@ -173,7 +173,7 @@ public class SamlController extends AbstractFederateController {
 						String destination = event.body().getString("destination");
 						String error = event.body().getString("error");
 
-						if (isNotEmpty(samlResponse) && error == null) {
+						if (isNotEmpty(samlResponse) && (error == null || error.isEmpty())) {
 
 							destination+="?SAMLResponse="+samlResponse;
 							httpClient.post(destination, new Handler<HttpClientResponse>() {
