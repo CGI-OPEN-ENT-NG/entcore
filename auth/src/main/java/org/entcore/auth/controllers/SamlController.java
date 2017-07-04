@@ -29,6 +29,7 @@ import org.entcore.auth.services.SamlServiceProvider;
 import org.entcore.auth.services.SamlServiceProviderFactory;
 import org.entcore.common.http.response.DefaultPages;
 import org.entcore.common.user.UserInfos;
+import org.entcore.common.user.UserUtils;
 import org.opensaml.DefaultBootstrap;
 import org.opensaml.saml2.core.Assertion;
 import org.opensaml.saml2.core.AuthnStatement;
@@ -37,6 +38,8 @@ import org.opensaml.xml.ConfigurationException;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.VoidHandler;
 import org.vertx.java.core.eventbus.Message;
+import org.vertx.java.core.http.HttpClient;
+import org.vertx.java.core.http.HttpClientResponse;
 import org.vertx.java.core.http.HttpServerRequest;
 import org.vertx.java.core.json.JsonArray;
 import org.vertx.java.core.json.JsonElement;
@@ -59,9 +62,14 @@ public class SamlController extends AbstractFederateController {
 	private JsonObject samlWayfParams;
 	private JsonObject samlWayfMustacheFormat;
 	private String ignoreCallBackPattern;
+	private final HttpClient httpClient;
 
 	public SamlController() throws ConfigurationException {
 		DefaultBootstrap.bootstrap();
+		this.httpClient = vertx.createHttpClient()
+				.setHost("localhost")
+				.setPort(8009) //TODO externaliser port dans config
+				.setMaxPoolSize(16);
 	}
 
 	@Get("/saml/wayf")
@@ -140,6 +148,47 @@ public class SamlController extends AbstractFederateController {
 				} else {
 					badRequest(request, "empty.authn.request");
 				}
+			}
+		});
+	}
+
+	@Get("/saml/sso/:providerId")
+	//@SecuredAction(value = "", type = ActionType.AUTHENTICATED)
+	public  void sso (final HttpServerRequest request) {
+		UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
+			@Override
+			public void handle(UserInfos user) {
+				final String serviceProviderId = request.params().get("providerId");
+
+				if (serviceProviderId == null) {
+					forbidden(request, "invalid.provider");
+					return;
+				}
+				JsonObject event = new JsonObject()
+						.putString("action", "generate-saml-response").putString("SP", serviceProviderId);
+				vertx.eventBus().send("saml", event, new Handler<Message<JsonObject>>() {
+					@Override
+					public void handle(Message<JsonObject> event) {
+						String samlResponse = event.body().getString("SAMLResponse");
+						String destination = event.body().getString("destination");
+						String error = event.body().getString("error");
+
+						if (isNotEmpty(samlResponse) && error == null) {
+
+							destination+="?SAMLResponse="+samlResponse;
+							httpClient.post(destination, new Handler<HttpClientResponse>() {
+								@Override
+								public void handle(HttpClientResponse event) {
+
+								}
+							});
+						} else {
+							redirect(request, LOGIN_PAGE);
+						}
+
+						log.info("samlResponse get from controller : " + samlResponse);
+					}
+				});
 			}
 		});
 	}

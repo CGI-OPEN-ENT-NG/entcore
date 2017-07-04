@@ -42,6 +42,8 @@ import org.opensaml.xml.ConfigurationException;
 import org.opensaml.xml.encryption.InlineEncryptedKeyResolver;
 import org.opensaml.xml.io.MarshallingException;
 import org.opensaml.xml.parse.BasicParserPool;
+import org.opensaml.xml.schema.XSString;
+import org.opensaml.xml.schema.impl.XSStringBuilder;
 import org.opensaml.xml.security.CriteriaSet;
 import org.opensaml.xml.security.credential.UsageType;
 import org.opensaml.xml.security.criteria.EntityIDCriteria;
@@ -52,15 +54,18 @@ import org.opensaml.xml.security.x509.BasicX509Credential;
 import org.opensaml.xml.signature.Signature;
 import org.opensaml.xml.signature.SignatureTrustEngine;
 import org.opensaml.xml.signature.impl.ExplicitKeySignatureTrustEngine;
+import org.opensaml.xml.util.XMLHelper;
 import org.opensaml.xml.validation.ValidationException;
 import org.vertx.java.busmods.BusModBase;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.eventbus.Message;
 import org.vertx.java.core.json.JsonObject;
 import org.vertx.java.core.json.impl.Base64;
+import org.w3c.dom.Element;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.security.InvalidKeyException;
@@ -70,9 +75,7 @@ import java.security.SignatureException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 public class SamlValidator extends BusModBase implements Handler<Message<JsonObject>> {
 
@@ -107,6 +110,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 	}
 
 	private void loadPrivateKey(String path) throws NoSuchAlgorithmException, InvalidKeySpecException {
+		logger.info("loadPrivateKey : " + path);
 		if (path != null && !path.trim().isEmpty() && vertx.fileSystem().existsSync(path)) {
 			byte[] encodedPrivateKey = vertx.fileSystem().readFileSync(path).getBytes();
 			PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(encodedPrivateKey);
@@ -119,7 +123,9 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		final String action = message.body().getString("action", "");
 		final String response = message.body().getString("response");
 		final String idp = message.body().getString("IDP");
-		if (!"generate-slo-request".equals(action) && !"generate-authn-request".equals(action) &&
+		if (!"generate-slo-request".equals(action) &&
+				!"generate-authn-request".equals(action) &&
+				!"generate-saml-response".equals(action) &&
 				(response == null || response.trim().isEmpty())) {
 			sendError(message, "invalid.response");
 			return;
@@ -135,6 +141,11 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 					} else {
 						sendOK(message, generateAuthnRequest(idp, sp, acs, sign));
 					}
+					break;
+				case "generate-saml-response" :
+					String serviceProvider = message.body().getString("SP");
+					String userId = message.body().getString("userId");
+					sendOK(message, generateSAMLResponse(idp, serviceProvider));
 					break;
 				case "validate-signature":
 					sendOK(message, new JsonObject().putBoolean("valid", validateSignature(response)));
@@ -162,6 +173,249 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		} catch (Exception e) {
 			sendError(message, e.getMessage(), e);
 		}
+	}
+
+
+	public JsonObject generateSAMLResponse(String idp, String serviceProvider)
+			throws SignatureException, NoSuchAlgorithmException, InvalidKeyException, UnsupportedEncodingException, MarshallingException {
+		logger.info("start generating SAMLResponse");
+		logger.info("IDP : " + idp);
+		logger.info("SP : " + serviceProvider);
+
+		// --- TAG Issuer ---
+		Issuer issuer = createIssuer(serviceProvider);
+
+		// --- TAG Status ---
+		Status status = createStatus();
+
+		// --- TAG Assertion ---
+		Assertion assertion = generateAssertion(idp, serviceProvider);
+
+		// -- attribute Destination (acs) --
+		String destination = "https://ts.ac-paris.fr/sso/acs";
+
+		// TODO à récupérer des métadatas du serviceprovider (académie)
+			/*AssertionConsumerService assertionConsumerService = entityDescriptorMap.get(serviceProvider).getSPSSODescriptor(SAMLConstants.SAML20P_NS).getDefaultAssertionConsumerService();
+			if(assertionConsumerService == null) {
+				String error = "error : AssertionConsumerService not found";
+				logger.error(error);
+				return new JsonObject().putString("error", error);
+			}
+			destination = assertionConsumerService.getLocation();*/
+
+		// --- Build response --
+		Response response = createResponse(new DateTime(), issuer, status, assertion, destination);
+//			response.setSignature(signature);
+
+		ResponseMarshaller marshaller = new ResponseMarshaller();
+		Element element = marshaller.marshall(response);
+
+//			if (signature != null) {
+//				Signer.signObject(signature);
+//			}
+
+//			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+//			XMLHelper.writeNode(element, baos);
+
+		StringWriter rspWrt = new StringWriter();
+		XMLHelper.writeNode(element, rspWrt);
+
+		logger.info("response : "+ rspWrt.toString());
+		JsonObject jsonObject = new JsonObject();
+		jsonObject.putString("SAMLResponse",rspWrt.toString());
+
+		return jsonObject;
+	}
+
+	private Status createStatus() {
+		StatusCodeBuilder statusCodeBuilder = new StatusCodeBuilder();
+		StatusCode statusCode = statusCodeBuilder.buildObject();
+		statusCode.setValue(StatusCode.SUCCESS_URI);
+
+		StatusBuilder statusBuilder = new StatusBuilder();
+		Status status = statusBuilder.buildObject();
+		status.setStatusCode(statusCode);
+
+		return status;
+	}
+
+	/*private Signature createSignature() throws Throwable {
+		if (publicKeyLocation != null && privateKeyLocation != null) {
+			SignatureBuilder builder = new SignatureBuilder();
+			Signature signature = builder.buildObject();
+			signature.setSigningCredential(certManager.getSigningCredential(publicKeyLocation, privateKeyLocation));
+			signature.setSignatureAlgorithm(SignatureConstants.ALGO_ID_SIGNATURE_RSA_SHA1);
+			signature.setCanonicalizationAlgorithm(SignatureConstants.ALGO_ID_C14N_EXCL_OMIT_COMMENTS);
+
+			return signature;
+		}
+
+		return null;
+	}*/
+
+	private Response createResponse(final DateTime issueDate, Issuer issuer, Status status, Assertion assertion, String destination) {
+		ResponseBuilder responseBuilder = new ResponseBuilder();
+		Response response = responseBuilder.buildObject();
+		response.setID(UUID.randomUUID().toString());
+		response.setIssueInstant(issueDate);
+		response.setVersion(SAMLVersion.VERSION_20);
+		response.setIssuer(issuer);
+		response.setStatus(status);
+		response.setDestination(destination);
+		response.getAssertions().add(assertion);
+		return response;
+	}
+
+
+	private Assertion generateAssertion(String idp, String serviceProvider)
+			throws UnsupportedEncodingException, NoSuchAlgorithmException, InvalidKeyException, SignatureException {
+		logger.info("start generating assertion");
+		logger.info("IDP : " + idp);
+		logger.info("SP : " + serviceProvider);
+
+		// Init assertion
+		AssertionBuilder assertionBuilder = new AssertionBuilder();
+
+		// --- TAG Assertion ---
+		Assertion assertion = assertionBuilder.buildObject();
+		// attribut ID
+		assertion.setID(UUID.randomUUID().toString());
+		logger.info("Assertion ID : " + assertion.getID());
+
+		// attribut IssueInstant
+		DateTime authenticationTime = new DateTime();
+		assertion.setIssueInstant(authenticationTime);
+		logger.info("IssueInstant : " + assertion.getIssueInstant());
+
+		// --- TAG Issuer ---
+		// TODO préciser le nom du SP de téléservices
+		Issuer issuer = createIssuer(serviceProvider);
+		assertion.setIssuer(issuer);
+
+		// --- TAG Subject ---
+		// TODO spécifier le nameId + indiquer NameQualifier / SPNameQualifier + Recipient du SubjectConfirmation (l'acs de l'académie)
+		Subject subject = createSubject("dadazdadaz", 5);
+		assertion.setSubject(subject);
+
+		// --- TAG Conditions ? ---
+
+		// --- TAG AuthnStatement ---
+		AuthnStatement authnStatement = createAuthnStatement(authenticationTime);
+		assertion.getAuthnStatements().add(authnStatement);
+
+		// --- TAG AttributeStatement ---
+		logger.info("create user Vector(s)");
+		HashMap<String, List<String>> attributes = new HashMap<String, List<String>>();
+		// TODO variabiliser le type de vecteur en fonction du SP
+		// TODO construire le ou les vecteurs en fonction de l'utilisateur et de son profil
+		// TODO bonus : voir pour mettre le FriendlyName
+
+		attributes.put("FrEduVecteur", Arrays.asList("4|||701294|0790031E"));
+		AttributeStatement attributeStatement = createAttributeStatement(attributes);
+		assertion.getAttributeStatements().add(attributeStatement);
+
+		/*X509Certificate x509Certif = entityDescriptorMap.get(idp).getIDPSSODescriptor("").getKeyDescriptors().get(0).getKeyInfo().getX509Datas().get(0).getX509Certificates().get(0);
+		// create credential and initialize
+		BasicX509Credential credential = new BasicX509Credential();
+		credential.setEntityCertificate(x509Certif);
+		credential.setPrivateKey(privateKey);*/
+
+		JsonObject jsonObject = new JsonObject();
+		String strAssertion = assertion.toString();
+		logger.info("strAssertion : "+ strAssertion);
+		String strSignedAssertion = sign(strAssertion);
+		logger.info("strSignedAssertion : "+ strSignedAssertion);
+
+//		jsonObject.putString("assertion", strAssertion);
+//		jsonObject.putString("assertion-sign", strSignedAssertion);
+
+		return  assertion;
+	}
+
+	private AttributeStatement createAttributeStatement(HashMap<String, List<String>> attributes) {
+		// create authenticationstatement object
+		AttributeStatementBuilder attributeStatementBuilder = new AttributeStatementBuilder();
+		AttributeStatement attributeStatement = attributeStatementBuilder.buildObject();
+
+		AttributeBuilder attributeBuilder = new AttributeBuilder();
+		if (attributes != null) {
+			for (Map.Entry<String, List<String>> entry : attributes.entrySet()) {
+				Attribute attribute = attributeBuilder.buildObject();
+				attribute.setName(entry.getKey());
+
+				for (String value : entry.getValue()) {
+					XSStringBuilder stringBuilder = new XSStringBuilder();
+					XSString attributeValue = stringBuilder.buildObject(AttributeValue.DEFAULT_ELEMENT_NAME, XSString.TYPE_NAME);
+					attributeValue.setValue(value);
+					attribute.getAttributeValues().add(attributeValue);
+				}
+
+				attributeStatement.getAttributes().add(attribute);
+			}
+		}
+
+		return attributeStatement;
+	}
+
+	private AuthnStatement createAuthnStatement(final DateTime issueDate) {
+		logger.info("createAuthnStatement with issueDate : " + issueDate);
+		// create authcontextclassref object
+		AuthnContextClassRefBuilder classRefBuilder = new AuthnContextClassRefBuilder();
+		AuthnContextClassRef classRef = classRefBuilder.buildObject();
+		classRef.setAuthnContextClassRef("urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport");
+
+		// create authcontext object
+		AuthnContextBuilder authContextBuilder = new AuthnContextBuilder();
+		AuthnContext authnContext = authContextBuilder.buildObject();
+		authnContext.setAuthnContextClassRef(classRef);
+
+		// create authenticationstatement object
+		AuthnStatementBuilder authStatementBuilder = new AuthnStatementBuilder();
+		AuthnStatement authnStatement = authStatementBuilder.buildObject();
+		authnStatement.setAuthnInstant(issueDate);
+		authnStatement.setAuthnContext(authnContext);
+
+		return authnStatement;
+	}
+
+	private Issuer createIssuer(final String issuerName) {
+		logger.info("createIssuer : " + issuerName);
+		// create Issuer object
+		IssuerBuilder issuerBuilder = new IssuerBuilder();
+		Issuer issuer = issuerBuilder.buildObject();
+		issuer.setValue(issuerName);
+		return issuer;
+	}
+
+	private Subject createSubject(final String nameIdValue, final Integer samlAssertionDays) {
+		logger.info("createSubject : " + nameIdValue);
+		logger.info("samlAssertionDays : " + samlAssertionDays);
+		DateTime currentDate = new DateTime();
+		if (samlAssertionDays != null)
+			currentDate = currentDate.plusDays(samlAssertionDays);
+
+		// create name element
+		NameIDBuilder nameIdBuilder = new NameIDBuilder();
+		NameID nameId = nameIdBuilder.buildObject();
+		nameId.setValue(nameIdValue);
+		nameId.setFormat("urn:oasis:names:tc:SAML:2.0:nameid-format:persistent");
+
+		SubjectConfirmationDataBuilder dataBuilder = new SubjectConfirmationDataBuilder();
+		SubjectConfirmationData subjectConfirmationData = dataBuilder.buildObject();
+		subjectConfirmationData.setNotOnOrAfter(currentDate);
+
+		SubjectConfirmationBuilder subjectConfirmationBuilder = new SubjectConfirmationBuilder();
+		SubjectConfirmation subjectConfirmation = subjectConfirmationBuilder.buildObject();
+		subjectConfirmation.setMethod("urn:oasis:names:tc:SAML:2.0:cm:bearer");
+		subjectConfirmation.setSubjectConfirmationData(subjectConfirmationData);
+
+		// create subject element
+		SubjectBuilder subjectBuilder = new SubjectBuilder();
+		Subject subject = subjectBuilder.buildObject();
+		subject.setNameID(nameId);
+		subject.getSubjectConfirmations().add(subjectConfirmation);
+
+		return subject;
 	}
 
 	private JsonObject generateSimpleSPEntityIDRequest(String idp, String sp) {
