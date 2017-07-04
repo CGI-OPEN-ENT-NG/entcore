@@ -29,7 +29,6 @@
   "GRRRegisteredService.description" : "Service CAS spécifique <a href='http://grr.devome.com/' target='_blank'>GRR</a>, logiciel de réservation de ressource.",
   "LabomepRegisteredService.name" : "LaboMEP",
   "LabomepRegisteredService.description" : "Service CAS spécifique <a href='http://www.labomep.net/' target='_blank'>LaboMEP</a>, préparation de séances de mathématiques",
-  "NameCRIFRegisteredService.name" : "OGIL/Césame",
-  "NameCRIFRegisteredService.description" : "Service CAS spécifique pour Ogil et Césame"
-
+  "AcademicSuffixRegisteredService.name" : "OGIL/Césame",
+  "AcademicSuffixRegisteredService.description" : "Service CAS spécifique pour Ogil et Césame"
 }

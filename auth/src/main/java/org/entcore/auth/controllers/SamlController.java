@@ -35,6 +35,7 @@ import org.opensaml.saml2.core.Assertion;
 import org.opensaml.saml2.core.AuthnStatement;
 import org.opensaml.saml2.core.Response;
 import org.opensaml.xml.ConfigurationException;
+import org.opensaml.xml.io.MarshallingException;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.VoidHandler;
 import org.vertx.java.core.eventbus.Message;
@@ -205,8 +206,7 @@ public class SamlController extends AbstractFederateController {
 						if (event.isLeft()) {
 							redirect(request, LOGIN_PAGE);
 						} else {
-							final String nameId = (assertion != null && assertion.getSubject() != null &&
-									assertion.getSubject().getNameID() != null) ? assertion.getSubject().getNameID().getValue() : null;
+							final String nameId = getNameId(assertion);
 							final String sessionIndex = getSessionId(assertion);
 							if (log.isDebugEnabled()) {
 								log.debug("NameID : " + nameId);
@@ -235,6 +235,17 @@ public class SamlController extends AbstractFederateController {
 				});
 			}
 		});
+	}
+
+	protected String getNameId(Assertion assertion) {
+		try {
+			return (assertion != null && assertion.getSubject() != null &&
+					assertion.getSubject().getNameID() != null) ?
+					SamlUtils.marshallNameId(assertion.getSubject().getNameID()) : null;
+		} catch (MarshallingException e) {
+			log.error("Error marshalling NameId.", e);
+			return null;
+		}
 	}
 
 	@Get("/saml/slo")
