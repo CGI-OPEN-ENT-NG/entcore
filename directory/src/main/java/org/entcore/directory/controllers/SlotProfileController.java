@@ -13,13 +13,13 @@ import org.entcore.common.user.UserInfos;
 import org.entcore.common.user.UserUtils;
 import org.entcore.directory.pojo.Slot;
 import org.entcore.directory.services.SlotProfileService;
-import org.vertx.java.core.Handler;
-import org.vertx.java.core.Vertx;
-import org.vertx.java.core.http.HttpServerRequest;
+import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpServerRequest;
 import org.vertx.java.core.http.RouteMatcher;
-import org.vertx.java.core.json.JsonArray;
-import org.vertx.java.core.json.JsonObject;
-import org.vertx.java.platform.Container;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
+
 
 import java.util.Map;
 
@@ -37,9 +37,9 @@ public class SlotProfileController extends MongoDbControllerHelper {
     }
 
     @Override
-    public void init(Vertx vertx, Container container, RouteMatcher rm,
+    public void init(Vertx vertx, JsonObject config, RouteMatcher rm,
                      Map<String, fr.wseduc.webutils.security.SecuredAction> securedActions) {
-        super.init(vertx, container, rm, securedActions);
+        super.init(vertx, config, rm, securedActions);
     }
 
     @Post("/slotprofiles")
@@ -83,7 +83,7 @@ public class SlotProfileController extends MongoDbControllerHelper {
                         public void handle(final JsonObject slotProfile) {
                             final String structureId = slotProfile.getString("schoolId");
                             final String idSlotProfile = request.params().get("idSlotProfile");
-                            slotProfile.putString("_id", idSlotProfile);
+                            slotProfile.put("_id", idSlotProfile);
                             final boolean isCreation = false;
                             slotProfileService.listSlotProfilesByStructure(structureId, getCreateOrUpdateSlotProfileHandler(slotProfile, request, isCreation));
                         }
@@ -166,7 +166,7 @@ public class SlotProfileController extends MongoDbControllerHelper {
                                 public void handle(Either<String, JsonObject> event) {
                                     if (event.isRight()) {
                                         JsonObject value = event.right().getValue();
-                                        JsonArray existingSlots = value.getArray("slots");
+                                        JsonArray existingSlots = value.getJsonArray("slots");
                                         if (slotNameAlreadyExists(existingSlots, slot)) {
                                             String errorMessage = i18n.translate(
                                                     "directory.slot.bad.request.slot.name.already.exists",
@@ -217,7 +217,7 @@ public class SlotProfileController extends MongoDbControllerHelper {
                         public void handle(final JsonObject jsonSlot) {
                             final String idSlotProfile = request.params().get("idSlotProfile");
                             final String idSlot = request.params().get("idSlot");
-                            jsonSlot.putString(Slot.ID, idSlot);
+                            jsonSlot.put(Slot.ID, idSlot);
                             final Slot slot = new Slot(jsonSlot);
                             Long slotStart = slot.getStart();
                             Long slotEnd = slot.getEnd();
@@ -243,7 +243,7 @@ public class SlotProfileController extends MongoDbControllerHelper {
                                 public void handle(Either<String, JsonObject> event) {
                                     if (event.isRight()) {
                                         JsonObject value = event.right().getValue();
-                                        JsonArray existingSlots = value.getArray("slots");
+                                        JsonArray existingSlots = value.getJsonArray("slots");
                                         if (slotNameAlreadyExists(existingSlots, slot)) {
                                             String errorMessage = i18n.translate(
                                                     "directory.slot.bad.request.slot.name.already.exists",

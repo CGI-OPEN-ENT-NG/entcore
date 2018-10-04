@@ -8,9 +8,9 @@ import fr.wseduc.webutils.Either;
 import org.entcore.common.service.impl.MongoDbCrudService;
 import org.entcore.directory.pojo.Slot;
 import org.entcore.directory.services.SlotProfileService;
-import org.vertx.java.core.Handler;
-import org.vertx.java.core.json.JsonArray;
-import org.vertx.java.core.json.JsonObject;
+import io.vertx.core.Handler;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 
 import java.util.UUID;
 
@@ -30,7 +30,7 @@ public class DefaultSlotProfileService extends MongoDbCrudService implements Slo
         QueryBuilder query = QueryBuilder.start("_id").is(idSlotProfile);
 
         // Set UUID
-        slot.putString(Slot.ID, UUID.randomUUID().toString());
+        slot.put(Slot.ID, UUID.randomUUID().toString());
 
         // Modifier
         MongoUpdateBuilder modifier = new MongoUpdateBuilder();
@@ -45,22 +45,22 @@ public class DefaultSlotProfileService extends MongoDbCrudService implements Slo
         QueryBuilder query = QueryBuilder.start("_id").is(idSlotProfile);
 
         // Projection
-        JsonObject projection = new JsonObject().putNumber("slots", 1).putNumber("_id", 0);
+        JsonObject projection = new JsonObject().put("slots", 1).put("_id", 0);
         mongo.findOne(this.collection, MongoQueryBuilder.build(query), projection, validResultHandler(handler));
     }
 
     @Override
     public void listSlotProfilesByStructure(String structureId, Handler<Either<String, JsonArray>> handler) {
         // Query
-        JsonObject match = new JsonObject().putString("schoolId", structureId);
+        JsonObject match = new JsonObject().put("schoolId", structureId);
 
-        JsonObject sort = new JsonObject().putNumber("name", 1);
+        JsonObject sort = new JsonObject().put("name", 1);
 
         // Projection
         JsonObject projection = new JsonObject()
-                .putNumber("name", 1)
-                .putNumber("schoolId", 1)
-                .putNumber("slots", 1);
+                .put("name", 1)
+                .put("schoolId", 1)
+                .put("slots", 1);
         mongo.find(this.collection, match, sort, projection, validResultsHandler(handler));
     }
 

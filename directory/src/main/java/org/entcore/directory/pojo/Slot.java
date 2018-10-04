@@ -1,9 +1,9 @@
 package org.entcore.directory.pojo;
 
 import fr.wseduc.webutils.http.Renders;
-import org.vertx.java.core.json.JsonObject;
-import org.vertx.java.core.logging.Logger;
-import org.vertx.java.core.logging.impl.LoggerFactory;
+import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
