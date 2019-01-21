@@ -15,8 +15,8 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-import { ng, template, idiom as lang } from 'entcore';
-import { moment } from 'entcore';
+import {ng, template, idiom as lang, moment, Behaviours, model} from 'entcore';
+import http from 'axios';
 import { NavigationDelegateScope, NavigationDelegate } from './delegates/navigation';
 import { ActionDelegate, ActionDelegateScope } from './delegates/actions';
 import { TreeDelegate, TreeDelegateScope } from './delegates/tree';
@@ -32,221 +32,250 @@ import { models, workspaceService } from "./services";
 
 export interface WorkspaceScope extends RevisionDelegateScope, NavigationDelegateScope, TreeDelegateScope, ActionDelegateScope, CommentDelegateScope, DragDelegateScope, SearchDelegateScope, KeyboardDelegateScope {
 
-	//new
-	lightboxDelegateClose: () => boolean
-	newFile: { chosenFiles: any[] }
-	//
-	display: { nbFiles: number, importFiles?: boolean, viewFile?: models.Element, share?: boolean }
-	lastRoute: string
-	safeApply(a?);
-	//help
-	getHelpForFolder(folder: models.Element): string
-	//
-	setLightboxDelegateClose(f: () => boolean)
-	resetLightboxDelegateClose()
-	//
-	formatDocumentSize(size: number): string
-	shortDate(el: string | number): string
-	longDate(date: string): number
-	translate(key: string): string
-	cancelRequest(file)
-	isUploadedImage(): boolean
-	//selection
+    //new
+    lightboxDelegateClose: () => boolean
+    newFile: { chosenFiles: any[] }
+    //
+    display: { nbFiles: number, importFiles?: boolean, viewFile?: models.Element, share?: boolean }
+    lastRoute: string
+    safeApply(a?);
+    //help
+    getHelpForFolder(folder: models.Element): string
+    //
+    setLightboxDelegateClose(f: () => boolean)
+    resetLightboxDelegateClose()
+    //
+    formatDocumentSize(size: number): string
+    shortDate(el: string | number): string
+    longDate(date: string): number
+    translate(key: string): string
+    cancelRequest(file)
+    isUploadedImage(): boolean
+    //selection
+
+    //Libre Office Online specifics
+    initLibreOfficeOnline(): Promise<void>;
+    canBeOpenOnLool(file: models.Element): boolean;
+    openOnLibreOfficeOnline(file: models.Element): void;
+    loolCapabilities: any;
 }
 export let workspaceController = ng.controller('Workspace', ['$scope', '$rootScope', '$timeout', '$location', '$anchorScroll', 'route', ($scope: WorkspaceScope, $rootScope, $timeout, $location, $anchorScroll, route) => {
-	$scope.lightboxDelegateClose = () => false;
-	$scope.setLightboxDelegateClose = function (f) {
-		$scope.lightboxDelegateClose = f;
-	}
-	$scope.resetLightboxDelegateClose = function () {
-		$scope.lightboxDelegateClose = () => false;
+    $scope.lightboxDelegateClose = () => false;
+    $scope.setLightboxDelegateClose = function (f) {
+        $scope.lightboxDelegateClose = f;
+    }
+    $scope.resetLightboxDelegateClose = function () {
+        $scope.lightboxDelegateClose = () => false;
 
-	}
-	/**
-	 * Routes
-	 */
-	route({
-		viewFolder: function (params) {
-			$scope.lastRoute = window.location.href
-			//attend chargement arbo dossier
-			$scope.onTreeInit(() => {
-				$scope.openFolderById(params.folderId)
-			})
-		},
-		viewSharedFolder: function (params) {
-			$scope.lastRoute = window.location.href;
-			//attend chargement arbo dossier
-			$scope.onTreeInit(() => {
-				$scope.openFolderById(params.folderId)
-			})
-		},
-		openShared: function (params) {
-			$scope.lastRoute = window.location.href;
-			$scope.onTreeInit(() => {
-				$scope.setCurrentTree("shared")
-			})
-		},
-		openOwn: function (params) {
-			$scope.lastRoute = window.location.href;
-			$scope.onTreeInit(() => {
-				$scope.setCurrentTree("owner")
-			})
-		},
-		openTrash: function (params) {
-			$scope.lastRoute = window.location.href;
-			$scope.onTreeInit(() => {
-				$scope.setCurrentTree("trash")
-			})
-		},
-		openApps: function (params) {
-			$scope.lastRoute = window.location.href;
-			$scope.onTreeInit(() => {
-				$scope.setCurrentTree("protected")
-			})
-		}
-	});
-	//
-	const inits: (() => void)[] = [];
-	$scope.onInit = function (cb) {
-		inits.push(cb)
-	}
-	/**
-	 * Delegates
-	 */
-	NavigationDelegate($scope, $location, $anchorScroll, $timeout);
-	TreeDelegate($scope, $location);
-	ActionDelegate($scope);
-	CommentDelegate($scope);
-	DragDelegate($scope)
-	SearchDelegate($scope);
-	RevisionDelegate($scope);
-	KeyboardDelegate($scope)
-	/**
-	 * INIT
-	 */
-	$scope.trees = [{
-		name: lang.translate('documents'),
-		filter: 'owner',
-		hierarchical: true,
-		children: [],
-		buttons: [
-			{ text: lang.translate('workspace.add.document'), action: () => $scope.display.importFiles = true, icon: true, workflow: 'workspace.create', disabled() { return false } }
-		],
-		contextualButtons: [
-			{ text: lang.translate('workspace.move'), action: $scope.openMoveView, right: "manager" },
-			{ text: lang.translate('workspace.copy'), action: $scope.openCopyView, right: "read" },
-			{ text: lang.translate('workspace.move.trash'), action: $scope.toTrashConfirm, right: "manager" }
-		]
-	}, {
-		name: lang.translate('shared_tree'),
-		filter: 'shared',
-		hierarchical: true,
-		buttons: [
-			{
-				text: lang.translate('workspace.add.document'), action: () => $scope.display.importFiles = true, icon: true, workflow: 'workspace.create', disabled() {
-					let isFolder = ($scope.openedFolder.folder instanceof models.Element);
-					return isFolder && !$scope.openedFolder.folder.canWriteOnFolder
-				}
-			}
-		],
-		children: [],
-		helpbox: "workspace.help.2",
-		contextualButtons: [
-			{ text: lang.translate('workspace.move'), action: $scope.openMoveView, right: "manager" },
-			{ text: lang.translate('workspace.copy'), action: $scope.openCopyView, right: "read" },
-			{ text: lang.translate('workspace.move.trash'), action: $scope.toTrashConfirm, right: "manager" }
-		]
-	}, {
-		name: lang.translate('appDocuments'),
-		filter: 'protected',
-		buttons: [
-			{ text: lang.translate('workspace.add.document'), action: () => { }, icon: true, workflow: 'workspace.create', disabled() { return true } }
-		],
-		hierarchical: true,
-		children: [],
-		contextualButtons: [
-			{ text: lang.translate('workspace.copy'), action: $scope.openCopyView, right: "read" },
-			{ text: lang.translate('workspace.move.trash'), action: $scope.toTrashConfirm, right: "manager" }
-		]
-	}, {
-		name: lang.translate('trash'),
-		buttons: [
-			{ text: lang.translate('workspace.add.document'), action: () => { }, icon: true, workflow: 'workspace.create', disabled() { return true } }
-		],
-		filter: 'trash',
-		hierarchical: true,
-		children: [],
-		contextualButtons: [
-			{ text: lang.translate('workspace.trash.restore'), action: $scope.restore, right: "manager" },
-			{ text: lang.translate('workspace.move.trash'), action: $scope.deleteConfirm, right: "manager" }
-		]
-	}];
-	$scope.display = {
-		nbFiles: 50
-	};
-	//avoid open lightbox on startup
-	setTimeout(() => {
-		template.open('lightboxes', 'lightboxes');
-		template.open('toaster', 'toaster');
-	}, 500)
-	//evt emis lors de la maj d un partage
-	$rootScope.$on('share-updated', function (_, __) {
-		$timeout(() => {
-			$scope.reloadFolderContent();
-		})
-	});
-	/**
-	 * INIT DELEGATES
-	 */
-	inits.forEach(cb => cb());
+    }
+    /**
+     * Routes
+     */
+    route({
+        viewFolder: function (params) {
+            $scope.lastRoute = window.location.href
+            //attend chargement arbo dossier
+            $scope.onTreeInit(() => {
+                $scope.openFolderById(params.folderId)
+            })
+        },
+        viewSharedFolder: function (params) {
+            $scope.lastRoute = window.location.href;
+            //attend chargement arbo dossier
+            $scope.onTreeInit(() => {
+                $scope.openFolderById(params.folderId)
+            })
+        },
+        openShared: function (params) {
+            $scope.lastRoute = window.location.href;
+            $scope.onTreeInit(() => {
+                $scope.setCurrentTree("shared")
+            })
+        },
+        openOwn: function (params) {
+            $scope.lastRoute = window.location.href;
+            $scope.onTreeInit(() => {
+                $scope.setCurrentTree("owner")
+            })
+        },
+        openTrash: function (params) {
+            $scope.lastRoute = window.location.href;
+            $scope.onTreeInit(() => {
+                $scope.setCurrentTree("trash")
+            })
+        },
+        openApps: function (params) {
+            $scope.lastRoute = window.location.href;
+            $scope.onTreeInit(() => {
+                $scope.setCurrentTree("protected")
+            })
+        }
+    });
+    //
+    const inits: (() => void)[] = [];
+    $scope.onInit = function (cb) {
+        inits.push(cb)
+    }
+    /**
+     * Delegates
+     */
+    NavigationDelegate($scope, $location, $anchorScroll, $timeout);
+    TreeDelegate($scope, $location);
+    ActionDelegate($scope);
+    CommentDelegate($scope);
+    DragDelegate($scope)
+    SearchDelegate($scope);
+    RevisionDelegate($scope);
+    KeyboardDelegate($scope)
+    /**
+     * INIT
+     */
+    $scope.trees = [{
+        name: lang.translate('documents'),
+        filter: 'owner',
+        hierarchical: true,
+        children: [],
+        buttons: [
+            { text: lang.translate('workspace.add.document'), action: () => $scope.display.importFiles = true, icon: true, workflow: 'workspace.create', disabled() { return false } }
+        ],
+        contextualButtons: [
+            { text: lang.translate('workspace.move'), action: $scope.openMoveView, right: "manager" },
+            { text: lang.translate('workspace.copy'), action: $scope.openCopyView, right: "read" },
+            { text: lang.translate('workspace.move.trash'), action: $scope.toTrashConfirm, right: "manager" }
+        ]
+    }, {
+        name: lang.translate('shared_tree'),
+        filter: 'shared',
+        hierarchical: true,
+        buttons: [
+            {
+                text: lang.translate('workspace.add.document'), action: () => $scope.display.importFiles = true, icon: true, workflow: 'workspace.create', disabled() {
+                    let isFolder = ($scope.openedFolder.folder instanceof models.Element);
+                    return isFolder && !$scope.openedFolder.folder.canWriteOnFolder
+                }
+            }
+        ],
+        children: [],
+        helpbox: "workspace.help.2",
+        contextualButtons: [
+            { text: lang.translate('workspace.move'), action: $scope.openMoveView, right: "manager" },
+            { text: lang.translate('workspace.copy'), action: $scope.openCopyView, right: "read" },
+            { text: lang.translate('workspace.move.trash'), action: $scope.toTrashConfirm, right: "manager" }
+        ]
+    }, {
+        name: lang.translate('appDocuments'),
+        filter: 'protected',
+        buttons: [
+            { text: lang.translate('workspace.add.document'), action: () => { }, icon: true, workflow: 'workspace.create', disabled() { return true } }
+        ],
+        hierarchical: true,
+        children: [],
+        contextualButtons: [
+            { text: lang.translate('workspace.copy'), action: $scope.openCopyView, right: "read" },
+            { text: lang.translate('workspace.move.trash'), action: $scope.toTrashConfirm, right: "manager" }
+        ]
+    }, {
+        name: lang.translate('trash'),
+        buttons: [
+            { text: lang.translate('workspace.add.document'), action: () => { }, icon: true, workflow: 'workspace.create', disabled() { return true } }
+        ],
+        filter: 'trash',
+        hierarchical: true,
+        children: [],
+        contextualButtons: [
+            { text: lang.translate('workspace.trash.restore'), action: $scope.restore, right: "manager" },
+            { text: lang.translate('workspace.move.trash'), action: $scope.deleteConfirm, right: "manager" }
+        ]
+    }];
+    $scope.display = {
+        nbFiles: 50
+    };
+    //avoid open lightbox on startup
+    setTimeout(() => {
+        template.open('lightboxes', 'lightboxes');
+        template.open('toaster', 'toaster');
+    }, 500)
+    //evt emis lors de la maj d un partage
+    $rootScope.$on('share-updated', function (_, __) {
+        $timeout(() => {
+            $scope.reloadFolderContent();
+        })
+    });
+    /**
+     * INIT DELEGATES
+     */
+    inits.forEach(cb => cb());
 
-	$scope.safeApply = function (fn) {
-		const phase = this.$root.$$phase;
-		if (phase == '$apply' || phase == '$digest') {
-			if (fn && (typeof (fn) === 'function')) {
-				fn();
-			}
-		} else {
-			this.$apply(fn);
-		}
-	};
-	$scope.formatDocumentSize = workspaceService.formatDocumentSize;
+    $scope.safeApply = function (fn) {
+        const phase = this.$root.$$phase;
+        if (phase == '$apply' || phase == '$digest') {
+            if (fn && (typeof (fn) === 'function')) {
+                fn();
+            }
+        } else {
+            this.$apply(fn);
+        }
+    };
+    $scope.formatDocumentSize = workspaceService.formatDocumentSize;
 
 
-	$scope.cancelRequest = function (file) {
-		file.request.abort();
-	};
+    $scope.cancelRequest = function (file) {
+        file.request.abort();
+    };
 
-	$scope.isUploadedImage = function () {
-		return $scope.newFile.chosenFiles.findIndex((file) => {
-			const ext = file.extension.toLowerCase();
-			return ['png', 'jpg', 'jpeg', 'bmp'].indexOf(ext) > -1
-		}) > -1;
-	};
+    $scope.isUploadedImage = function () {
+        return $scope.newFile.chosenFiles.findIndex((file) => {
+            const ext = file.extension.toLowerCase();
+            return ['png', 'jpg', 'jpeg', 'bmp'].indexOf(ext) > -1
+        }) > -1;
+    };
 
-	$scope.translate = function (key) {
-		return lang.translate(key);
-	};
+    $scope.translate = function (key) {
+        return lang.translate(key);
+    };
 
-	$scope.longDate = function (dateString) {
-		if (!dateString) {
-			return moment().format('D MMMM YYYY');
-		}
+    $scope.longDate = function (dateString) {
+        if (!dateString) {
+            return moment().format('D MMMM YYYY');
+        }
 
-		return moment(dateString.split(' ')[0]).format('D MMMM YYYY');
-	}
+        return moment(dateString.split(' ')[0]).format('D MMMM YYYY');
+    }
 
-	$scope.shortDate = function (dateItem) {
-		if (!dateItem) {
-			return moment().format('L');
-		}
-		if (typeof dateItem === "number")
-			return moment(dateItem).format('L');
+    $scope.shortDate = function (dateItem) {
+        if (!dateItem) {
+            return moment().format('L');
+        }
+        if (typeof dateItem === "number")
+            return moment(dateItem).format('L');
 
-		if (typeof dateItem === "string")
-			return moment(dateItem.split(' ')[0]).format('L');
+        if (typeof dateItem === "string")
+            return moment(dateItem.split(' ')[0]).format('L');
 
-		return moment().format('L');
-	}
+        return moment().format('L');
+    }
 
+
+    $scope.initLibreOfficeOnline = async (): Promise<void> => {
+        try {
+            await model.me.workflow.load(['lool']);
+            if (model.me.hasWorkflow(Behaviours.applicationsBehaviours.lool.rights.workflow.openFile)) {
+                const { data } = await http.get('/lool/capabilities');
+                $scope.loolCapabilities = {};
+                data.forEach((capability) => $scope.loolCapabilities[capability.extension] = capability['content-type']);
+
+                $scope.canBeOpenOnLool = ({ metadata }: models.Element): boolean => {
+                    return metadata.extension in $scope.loolCapabilities && metadata["content-type"] === $scope.loolCapabilities[metadata.extension];
+                };
+
+                $scope.openOnLibreOfficeOnline = (file: models.Element): void => {
+                    window.open(`/lool/documents/${file._id}/open`);
+                };
+            }
+        } catch (err) {
+            throw err;
+        }
+    };
+
+    $scope.initLibreOfficeOnline();
 }]);

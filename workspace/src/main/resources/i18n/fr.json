@@ -237,5 +237,6 @@
     "workspace.contrib.cant":"Vous n'avez pas les droits de contributions dans ce dossier",
     "workspace.copied.toowner":"Document(s) copié(s) dans vos documents personnels",
     "workspace.copy.title":"Copier des fichiers et/ou dossiers",
-    "workspace.move.title":"Déplacement des fichiers et/ou dossiers"
+    "workspace.move.title":"Déplacement des fichiers et/ou dossiers",
+    "workspace.lool.open": "Editer en ligne"
 }
