@@ -65,12 +65,12 @@ public class FrEduVecteurService implements SamlVectorService {
                                 neo4j.execute(query, new JsonObject().put("userId", userId), validResultHandler(handler));
                             } else {
                                 // We return null for others profiles
-                                handler.handle(new Either.Left<String, JsonArray>("error : profil not supported"));
+                                handler.handle(new Either.Left<String, JsonArray>("error : profil "+ profiles +" not supported for FrEduVector "));
                             }
                         }
                     }
                 } else {
-                    handler.handle(new Either.Left<String, JsonArray>("error : user or profile not found"));
+                    handler.handle(new Either.Left<String, JsonArray>("error : user or profile not found for user " + userId));
                 }
             }
         }));

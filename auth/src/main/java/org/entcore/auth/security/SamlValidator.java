@@ -532,7 +532,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		// browse supported type vector required by the service provider
 		logger.info("createVectors init ");
 
-		List<AttributeConsumingService> AttributesCS = spSSODescriptor.getAttributeConsumingServices();
+			List<AttributeConsumingService> AttributesCS = spSSODescriptor.getAttributeConsumingServices();
 		if(AttributesCS.size() > 0){
 			HashMap<String, List<String>> attributes = new HashMap<String, List<String>>();
 			final JsonArray jsonArrayResult = new fr.wseduc.webutils.collections.JsonArray();
@@ -548,7 +548,18 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 								if (stringJsonArrayEither.isRight()) {
 									JsonArray jsonArrayResultTemp = ((JsonArray) stringJsonArrayEither.right().getValue());
 									for (int i = 0; i < jsonArrayResultTemp.size(); i++) {
-										jsonArrayResult.add(jsonArrayResultTemp.getValue(i));
+										JsonObject original_vector = ((JsonObject)jsonArrayResultTemp.getValue(i));
+										if(original_vector == null || !original_vector.containsKey("FrEduVecteur")) {
+											logger.warn("createVectors: For user " + userId + " vector FrEduVecteur is not well formed, is ignored " + original_vector);
+											continue;
+										}
+										String escaped_vector = StringEscapeUtils.escapeHtml(original_vector.getString("FrEduVecteur"));
+
+										JsonObject currentVector = new JsonObject();
+
+										currentVector.put("FrEduVecteur",escaped_vector);
+
+										jsonArrayResult.add(currentVector);
 									}
 									// add FrEduUrlRetour vector
 									for (RequestedAttribute requestedAttribute : attributeConsumingService.getRequestAttributes()) {
@@ -559,6 +570,8 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 										}
 									}
 									handler.handle(new Either.Right<String, JsonArray>(jsonArrayResult));
+								} else {
+									log.error("Error while creating Vector " + stringJsonArrayEither.left().getValue()  );
 								}
 
 							}
@@ -893,7 +906,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		return sigTrustEngine.validate(signature, criteriaSet);
 	}
 
-	private void loadSignatureTrustEngine(String filePath) throws MetadataProviderException {
+	private void 	loadSignatureTrustEngine(String filePath) throws MetadataProviderException {
 		logger.info(filePath);
 		FilesystemMetadataProvider metadataProvider = new FilesystemMetadataProvider(new File(filePath));
 		metadataProvider.setParserPool(new BasicParserPool());
