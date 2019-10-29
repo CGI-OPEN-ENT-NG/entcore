@@ -805,5 +805,11 @@
     "csv.file.too.long" : "Fichier trop volumineux. La taille maximum est d'un méga-octets par fichier.",
     "csv.file.size.error": "Erreur lors du calcul de la taille du fichier.",
     "flashmsg.message": "Message",
-    "flashmsg.preview": "Aperçu du message"
+    "flashmsg.preview": "Aperçu du message",
+    "subjects": "Matière",
+    "search.subject": "Rechercher",
+    "create.subjects": "Ajouter une matière",
+    "create.subjects.label": "Nom",
+    "create.subjects.cancel": "Annuler",
+    "create.subjects.submit": "Créer"
 }

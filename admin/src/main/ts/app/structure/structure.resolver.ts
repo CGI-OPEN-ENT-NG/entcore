@@ -26,6 +26,7 @@ export function sync(structure: StructureModel, force?: boolean): Promise<Struct
     let classesPromise = structure.syncClasses(force);
     let groupsPromise = structure.syncGroups(force);
     let sourcesPromise = structure.syncSources(force);
+    let subjectsPromise = structure.syncSubjects(force);
     let aafFunctionsPromise = structure.syncAafFunctions(force);
     let profilesPromise = ProfilesService.getProfiles().then(p => structure.profiles = p);
     return Promise.all<any>([classesPromise, groupsPromise, sourcesPromise, aafFunctionsPromise, profilesPromise])
