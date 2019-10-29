@@ -14,7 +14,7 @@ import { routing } from '../core/services/routing.service'
             <button class="tab" *ngFor="let tab of tabs"
                 [disabled]="tab.disabled"
                 [routerLink]="tab.view"
-                [class.active]="isActive(tab)">
+                routerLinkActive="active">
                 {{ tab.label | translate }}
             </button>
         </div>
@@ -30,7 +30,7 @@ export class ManagementRoot implements OnInit, OnDestroy {
 
     // Tabs
     tabs = [
-        { label: "management.message.flash", view: "message-flash", subs: ["message-flash-edit", "message-flash-duplicate", "message-flash-create"]}
+        { label: "management.message.flash", view: "message-flash"}
     ]
 
     private routerSubscriber : Subscription
@@ -65,8 +65,4 @@ export class ManagementRoot implements OnInit, OnDestroy {
         this.error = error
     }
 
-    isActive(tab: {label: string, view: string, subs: string[]}): boolean {
-        return this.router.isActive(this.router.createUrlTree([tab.view], {relativeTo: this.route}), false) ||
-        (!!tab.subs && tab.subs.findIndex(sub => this.router.isActive(this.router.createUrlTree([sub], {relativeTo: this.route}), false)) != -1);
-      }
 }

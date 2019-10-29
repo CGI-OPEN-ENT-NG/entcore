@@ -3,8 +3,6 @@ import {
     ContentChildren, AfterContentInit, QueryList, 
     ElementRef, EventEmitter,
     OnDestroy } from '@angular/core'
-import { LabelsService } from '../services'
-
 
 @Component({
     selector : 'step',
@@ -30,86 +28,94 @@ export class StepComponent {
 @Component({
     selector: 'wizard',
     template: `
-        <nav class="steps-progress-menu">
-            <ul>
-                <li *ngFor="let step of steps" 
-                    [class.active]="step.isActived"
-                    [class.finish]="step.isFinished">
-                    {{step.name}}
-                </li>
-            </ul>
-        </nav>
-        <section class="steps-content">
-            <ng-content select="step"></ng-content>
-            <nav class="steps-nav-button">
-                <button class="cancel" 
-                    (click)="cancel.emit()"
-                    [title]="labels('cancel')">
-                    {{ labels('cancel') }}
-                </button>
-                <button class="previous" 
-                    (click)="onPreviousStep()" 
-                    *ngIf="activeStep > 0" 
-                    [title]="labels('previous')">
-                    {{ labels('previous') }}
-                </button>
-                <button class="next" 
-                    (click)="onNextStep()" 
-                    *ngIf="activeStep < steps.length - 1" ng-disabled="!canDoNext()"
-                    [title]="labels('next')">
-                    {{ labels('next') }}
-                </button>
-                <button class="finish" 
-                    *ngIf="activeStep === steps.length - 1" 
-                    (click)="finish.emit()" ng-disabled="!canDoFinish()"
-                    [title]="labels('finish')">
-                    {{ labels('finish') }}
-                </button>
+        <div class="wizard">
+            <nav class="wizard-menu">
+                <h2 class="wizard-menu__title"><s5l>wizard.steps</s5l></h2>
+                <ul>
+                    <li *ngFor="let step of steps" 
+                        [class.active]="step.isActived"
+                        [class.finish]="step.isFinished">
+                        {{step.name}}
+                    </li>
+                </ul>
             </nav>
-        </section>
+            <section class="wizard-content">
+                <ng-content select="step"></ng-content>
+                <nav class="wizard-content-nav" *ngIf="activeStep < steps.length - 1">
+                    <button class="wizard-content-nav__button cancel" 
+                        (click)="cancel.emit()"
+                        [title]="'cancel' | translate">
+                        {{ 'cancel' | translate }}
+                    </button>
+                    <button class="wizard-content-nav__button previous" 
+                        (click)="onPreviousStep()" 
+                        *ngIf="activeStep > 0" 
+                        [title]="'previous' | translate">
+                        {{ 'wizard.previous' | translate }}
+                    </button>
+                    <button class="wizard-content-nav__button wizard-content-nav__button--next" 
+                        (click)="onNextStep()" 
+                        [disabled]="!canDoNext"
+                        [title]="'next' | translate">
+                        {{ 'wizard.next' | translate }}
+                    </button>
+                </nav>
+            </section>
+        </div>
     `,
     styles: [`
-        :host {
-            display: block;
-            overflow: auto;
-            background-color: #ccc;
+        .wizard {
+            display: flex;
         }
-        section.steps-content {
-            float: right;
-            width: 75%;
-            background: #fff;
+        .wizard-menu {
+            background: #5b6472;
+            flex: 0 0 240px;
         }
-        nav.steps-progress-menu {
-            float: left;
-            width: 24%;
-            background-color: transparent;
+        .wizard-menu ul {
+            padding: 10px 30px;
         }
-        nav.steps-progress-menu ul li {
+        .wizard-menu ul li {
+            color: #eaedf2;
             list-style-type: none;
-            padding: 7px;
+            padding: 5px 0;
         }
-        nav.steps-progress-menu ul li.active,
-        nav.steps-progress-menu ul li.finish {
+        .wizard-menu ul li.active,
+        .wizard-menu ul li.finish {
             font-weight: bold;
+            color: white;
         }
-        nav.steps-progress-menu ul li.finish {
+        .wizard-menu ul li.finish {
             color: green;
         }
-        nav.steps-nav-button {
+        .wizard-menu__title {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: white;
+            padding: 25px 0 0 10px;
+        }
+        .wizard-content {
+            background: #fff;
+            flex: auto;
+        }
+        .wizard-content-nav {
             text-align : right;
+        }
+        .wizard-content-nav__button {
+            margin: 10px 0;
+        }
+        .wizard-content-nav__button--next {
+            margin-right: 16px;
         }
     `]
 })
 export class WizardComponent implements AfterContentInit, OnDestroy {
 
     constructor(
-            private labelsService: LabelsService,
             private renderer : Renderer,
             private ref : ElementRef)
     {}
     
     @Output("cancel") cancel: EventEmitter<{}> = new EventEmitter();
-    @Output("finish") finish: EventEmitter<{}> = new EventEmitter();
     @Output("previousStep") previousStep : EventEmitter<Number> = new EventEmitter();
     @Output("nextStep") nextStep : EventEmitter<Number> = new EventEmitter();
 
@@ -117,10 +123,8 @@ export class WizardComponent implements AfterContentInit, OnDestroy {
         this.activeStep = 0;
         this.steps.forEach((step, index) => {
             index == 0 ? step.isActived = true : step.isActived = false; 
-        })
-    }
-
-    doFinish() {
+        });
+        this.canDoNext = true;
     }
 
     onPreviousStep() {
@@ -132,19 +136,24 @@ export class WizardComponent implements AfterContentInit, OnDestroy {
             this.steps.toArray()[this.activeStep].isActived = false;
             this.steps.toArray()[this.activeStep -1].isActived = true;
             this.activeStep--;
+            this.canDoNext = true;
         }
     }
+
+    public canDoNext:boolean = true;
 
     onNextStep() {
         this.nextStep.emit(this.activeStep);
     }
-    doNextStep() {
+    doNextStep(error?: boolean) {
         if (this.activeStep < this.steps.length -1) {
+            this.canDoNext = !error;
             this.steps.toArray()[this.activeStep].isActived = false;
             this.steps.toArray()[this.activeStep + 1].isActived = true;
             this.activeStep++;
         }
     }
+
 
     @ContentChildren(StepComponent) steps: QueryList<StepComponent>;
     activeStep:number = 0;
@@ -156,17 +165,4 @@ export class WizardComponent implements AfterContentInit, OnDestroy {
 
     ngOnDestroy() : void {
     }
-
-    labels(label){
-        return this.labelsService.getLabel(label)
-    }
-
-    canDoNext():boolean {
-        return true;
-    }
-
-    canDoFinish():boolean {
-        return true;
-    }
-
 }

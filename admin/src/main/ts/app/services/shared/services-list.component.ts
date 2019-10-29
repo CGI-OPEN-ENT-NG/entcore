@@ -100,6 +100,13 @@ export class ServicesListComponent {
                             this.collectionRef[this.serviceName].collection,
                             session.functions['SUPER_ADMIN'] != null
                         );
+
+                        if (!session.functions['SUPER_ADMIN']) {
+                            this.collectionRef[this.serviceName].collection = filterApplicationsByRoles(
+                                this.collectionRef[this.serviceName].collection,
+                                this.servicesStore.structure.distributions
+                            );
+                        }
                     }
 
                     this.collectionRef[this.serviceName].collection = this.collectionRef[this.serviceName].collection
@@ -173,5 +180,18 @@ export function filterApplicationsByType(apps: ApplicationModel[], isAdmc: boole
             return app.appType == 'END_USER' || app.appType == 'SYSTEM';
         }
         return app.appType == 'END_USER';
+    });
+}
+
+export function filterApplicationsByRoles(apps: ApplicationModel[], structureDistributions: string[]) {
+    return apps.filter((app: ApplicationModel) => {
+        if (app.roles.length == 0) {
+            return false;
+        }
+        return app.roles.some(role => {
+            return !role.distributions 
+                || role.distributions.length == 0 
+                || structureDistributions.some(structureDistribution => role.distributions.indexOf(structureDistribution) > -1)
+        });
     });
 }

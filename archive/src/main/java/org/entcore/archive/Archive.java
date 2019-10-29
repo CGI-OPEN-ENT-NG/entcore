@@ -21,12 +21,19 @@ package org.entcore.archive;
 
 import fr.wseduc.cron.CronTrigger;
 import org.entcore.archive.controllers.ArchiveController;
+import org.entcore.archive.controllers.ImportController;
+import org.entcore.archive.controllers.DuplicationController;
 import org.entcore.archive.filters.ArchiveFilter;
-import org.entcore.archive.services.impl.DeleteOldExports;
+import org.entcore.archive.services.ImportService;
+import org.entcore.archive.services.impl.DefaultImportService;
+import org.entcore.archive.services.impl.DeleteOldArchives;
 import org.entcore.common.http.BaseServer;
+import org.entcore.common.storage.Storage;
 import org.entcore.common.storage.StorageFactory;
+import org.entcore.common.utils.MapFactory;
 
 import java.text.ParseException;
+import java.util.Map;
 
 public class Archive extends BaseServer {
 
@@ -36,15 +43,30 @@ public class Archive extends BaseServer {
 	public void start() throws Exception {
 		setResourceProvider(new ArchiveFilter());
 		super.start();
-		addController(new ArchiveController());
+
+		Storage storage = new StorageFactory(vertx, config).getStorage();
+
+		final Map<String, Long> archiveInProgress = MapFactory.getSyncClusterMap(Archive.ARCHIVES, vertx);
+
+		String importPath = config.getString("import-path", System.getProperty("java.io.tmpdir"));
+		ImportService importService = new DefaultImportService(vertx, storage, importPath);
+
+		ArchiveController ac = new ArchiveController(storage, archiveInProgress);
+		ImportController ic = new ImportController(importService, storage, archiveInProgress);
+		DuplicationController dc = new DuplicationController(vertx, storage, importPath);
+
+		addController(ac);
+		addController(ic);
+		addController(dc);
 
 		String purgeArchivesCron = config.getString("purgeArchive");
 		if (purgeArchivesCron != null) {
 			try {
 				new CronTrigger(vertx, purgeArchivesCron).schedule(
-						new DeleteOldExports(
+						new DeleteOldArchives(
 								new StorageFactory(vertx, config).getStorage(),
-								config.getInteger("deleteDelay", 24)
+								config.getInteger("deleteDelay", 24),
+								importService
 						));
 			} catch (ParseException e) {
 				log.error("Invalid cron expression.", e);

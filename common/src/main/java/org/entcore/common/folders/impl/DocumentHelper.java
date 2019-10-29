@@ -4,6 +4,7 @@ import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Date;
 import java.util.Optional;
 
@@ -15,6 +16,84 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
 public class DocumentHelper {
+
+	private static JsonObject initBase(JsonObject doc, String owner, String ownerName, String name, String application)
+	{
+		if(doc == null)
+		{
+			doc = new JsonObject();
+
+			// Set some attributes only on new files, otherwise keep the old ones
+			doc.putNull("alt");
+			doc.putNull("eParent");
+			doc.put("ancestors", new JsonArray());
+			doc.put("inheritedShares", new JsonArray());
+			doc.put("isShared", false);
+			doc.putNull("legend");
+			doc.put("shared", new JsonArray());
+		}
+
+		String now = MongoDb.formatDate(new Date());
+
+		// Set creation data to the current user and time
+		doc.put("created", now);
+		doc.put("modified", now);
+		doc.put("owner", owner);
+		doc.put("ownerName", ownerName);
+
+		if(name == null)
+			name = DocumentHelper.getName(doc, "");
+
+		doc.put("name", name);
+		doc.put("nameSearch", StringUtils.stripAccentsToLowerCase(name));
+
+		if(application != null)
+			doc.put("application", application);
+
+		return doc;
+	}
+
+	public static JsonObject initFile(JsonObject doc, String owner, String ownerName)
+	{
+		return DocumentHelper.initFile(doc, owner, ownerName, null, null);
+	}
+
+	public static JsonObject initFile(JsonObject doc, String owner, String ownerName, String name)
+	{
+		return DocumentHelper.initFile(doc, owner, ownerName, name, null);
+	}
+
+	public static JsonObject initFile(JsonObject doc, String owner, String ownerName, String name, String application)
+	{
+		doc = DocumentHelper.initBase(doc, owner, ownerName, name, application);
+
+		doc.put("eType", FolderManager.FILE_TYPE);
+
+		return doc;
+	}
+
+	public static JsonObject initFolder(JsonObject doc, String owner, String ownerName)
+	{
+		return DocumentHelper.initFolder(doc, owner, ownerName, null, null);
+	}
+
+	public static JsonObject initFolder(JsonObject doc, String owner, String ownerName, String name)
+	{
+		return DocumentHelper.initFolder(doc, owner, ownerName, name, null);
+	}
+
+	public static JsonObject initFolder(JsonObject doc, String owner, String ownerName, String name, String application)
+	{
+		doc = DocumentHelper.initBase(doc, owner, ownerName, name, application);
+
+		doc.put("eType", FolderManager.FOLDER_TYPE);
+
+		// Create the metadata if needed
+		JsonObject metadata = DocumentHelper.getMetadata(doc);
+
+		return doc;
+	}
+
 	public static JsonArray getOrCreateFavorties(JsonObject doc) {
 		if (!doc.containsKey("favorites")) {
 			doc.put("favorites", new JsonArray());
@@ -30,6 +109,17 @@ public class DocumentHelper {
 
 	public static String getId(JsonObject doc) {
 		return doc.getString("_id");
+	}
+
+	public static JsonObject setId(JsonObject doc, String id) {
+		doc.put("_id", id);
+		return doc;
+	}
+
+	public static JsonObject removeId(JsonObject doc)
+	{
+		doc.remove("_id");
+		return doc;
 	}
 
 	public static String getOwner(JsonObject doc) {
@@ -64,9 +154,30 @@ public class DocumentHelper {
 		return doc.getString("name", def);
 	}
 
-	public static void setParent(JsonObject doc, String newParent) {
+	public static JsonObject setName(JsonObject doc, String name)
+	{
+		doc.put("name", name);
+		return doc;
+	}
+
+	public static String getTitle(JsonObject doc) {
+		return doc.getString("title");
+	}
+
+	public static String getTitle(JsonObject doc, String def) {
+		return doc.getString("title", def);
+	}
+
+	public static JsonObject setTitle(JsonObject doc, String title)
+	{
+		doc.put("title", title);
+		return doc;
+	}
+
+	public static JsonObject setParent(JsonObject doc, String newParent) {
 		doc.put("eParent", newParent);
 		doc.remove("eParentOld");
+		return doc;
 	}
 
 	public static String getParent(JsonObject doc) {
@@ -81,6 +192,19 @@ public class DocumentHelper {
 		return doc.getBoolean("isShared", false);
 	}
 
+	public static JsonObject setShared(JsonObject doc, boolean isShared)
+	{
+		doc.put("isShared", isShared);
+		return doc;
+	}
+
+	public static JsonObject removeShares(JsonObject doc)
+	{
+		doc.put("shared", new JsonArray());
+		doc.put("inheritedShares", new JsonArray());
+		return doc;
+	}
+
 	public static boolean hasParent(JsonObject doc) {
 		return !StringUtils.isEmpty(getParent(doc));
 	}
@@ -93,12 +217,67 @@ public class DocumentHelper {
 		return doc.getString("file", "");
 	}
 
+	public static JsonObject setFileId(JsonObject doc, String fileId) {
+		doc.put("file", fileId);
+		return doc;
+	}
+
+	public static JsonObject getMetadata(JsonObject doc)
+	{
+		JsonObject metadata = doc.getJsonObject("metadata");
+		if (metadata == null)
+		{
+			metadata = new JsonObject();
+
+			if(DocumentHelper.isFolder(doc) == false)
+				doc.put("metadata", metadata);
+		}
+
+		return metadata;
+	}
+
+	public static JsonObject mergeMetadata(JsonObject src, JsonObject dest)
+	{
+		JsonObject oldM = DocumentHelper.getMetadata(src);
+		JsonObject newM = DocumentHelper.getMetadata(dest);
+
+		Map<String, Object> data = oldM.getMap();
+		for(Map.Entry<String, Object> entry : data.entrySet())
+			newM.put(entry.getKey(), entry.getValue());
+
+		return dest;
+	}
+
 	public static String getFileName(JsonObject doc, String defaut) {
 		JsonObject metadata = doc.getJsonObject("metadata");
 		if (metadata != null) {
 			return metadata.getString("filename", getName(doc, defaut));
 		}
 		return getName(doc, defaut);
+	}
+
+	public static JsonObject setFileName(JsonObject doc, String fileName)
+	{
+		JsonObject metadata = DocumentHelper.getMetadata(doc);
+		metadata.put("filename", fileName);
+
+		return doc;
+	}
+
+	public static String getContentType(JsonObject doc) {
+		JsonObject metadata = doc.getJsonObject("metadata");
+		if (metadata != null) {
+			return metadata.getString("content-type", "");
+		}
+		return "";
+	}
+
+	public static JsonObject setContentType(JsonObject doc, String contentType)
+	{
+		JsonObject metadata = DocumentHelper.getMetadata(doc);
+		metadata.put("content-type", contentType);
+
+		return doc;
 	}
 
 	public static boolean isFile(JsonObject doc) {
@@ -137,5 +316,41 @@ public class DocumentHelper {
 	public static long getFileSize(JsonArray docs) {
 		return docs.stream().map(o -> (JsonObject) o)//
 				.map(o -> DocumentHelper.getFileSize(o)).reduce(0l, (a1, a2) -> a1 + a2);
+	}
+
+	public static JsonObject getThumbnails(JsonObject doc)
+	{
+		JsonObject thumbs = doc.getJsonObject("thumbnails");
+		return thumbs == null ? new JsonObject() : thumbs;
+	}
+
+	public static JsonObject setThumbnails(JsonObject doc, JsonObject thumbnails)
+	{
+		doc.put("thumbnails", thumbnails == null ? new JsonObject() : thumbnails);
+		return doc;
+	}
+
+	public static boolean getProtected(JsonObject doc)
+	{
+		return doc.getBoolean("protected");
+	}
+
+	public static JsonObject setProtected(JsonObject doc, boolean isProtected)
+	{
+		doc.put("protected", isProtected);
+		return doc;
+	}
+
+	public static boolean isImage(JsonObject doc)
+	{
+		if (doc == null)
+			return false;
+		JsonObject metadata = doc.getJsonObject("metadata");
+		return metadata != null && (
+			"image/jpeg".equals(metadata.getString("content-type"))
+			|| "image/gif".equals(metadata.getString("content-type"))
+			|| "image/png".equals(metadata.getString("content-type"))
+			|| "image/tiff".equals(metadata.getString("content-type"))
+		);
 	}
 }

@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ViewChild } from "@angular/core";
 import { Subscription } from "rxjs";
 import { CasType } from "./CasType";
-import { ConnectorModel, Session, SessionModel } from "../../../core/store";
+import { ConnectorModel, Session, SessionModel, GroupModel, globalStore } from "../../../core/store";
 import { ServicesService, WorkspaceDocument } from "../../services.service";
 import { ActivatedRoute, Params, Router, Data } from "@angular/router";
 import { ServicesStore } from "../../services.store";
@@ -115,7 +115,7 @@ import 'rxjs/add/operator/toPromise';
                 {{ 'services.tab.assignment' | translate }}
             </button>
             <button class="tab"
-                    *ngIf="hasStructureChildren() && !isAssignmentDisabled() && inherits()"
+                    *ngIf="hasStructureChildren() && !isMassAssignmentDisabled() && inherits()"
                     [ngClass]="{active: currentTab === MASS_ASSIGNMENT_TAB}"
                     (click)="currentTab = MASS_ASSIGNMENT_TAB">
                 {{ 'services.tab.mass-assignment' | translate }}
@@ -134,6 +134,7 @@ import 'rxjs/add/operator/toPromise';
             [structureChildren]="hasStructureChildren()"
             [creationMode]="isCreationMode()"
             [disabled]="arePropertiesDisabled()"
+            [admc]="admc"
             (create)="onCreate($event)"
             (iconFileChanged)="onIconFileChanged($event)"
             (iconFileInvalid)="onIconFileInvalid($event)">
@@ -142,13 +143,14 @@ import 'rxjs/add/operator/toPromise';
         <connector-assignment
             *ngIf="currentTab === ASSIGNMENT_TAB"
             [connector]="servicesStore.connector"
+            [assignmentGroupPickerList]="assignmentGroupPickerList"
             [disabled]="isAssignmentDisabled()"
             (remove)="onRemoveAssignment($event)"
             (add)="onAddAssignment($event)">
         </connector-assignment>
 
         <connector-mass-assignment
-            *ngIf="currentTab === MASS_ASSIGNMENT_TAB && !isAssignmentDisabled()"
+            *ngIf="currentTab === MASS_ASSIGNMENT_TAB && !isMassAssignmentDisabled()"
             [structure]="{ id: this.servicesStore.structure.id, name: this.servicesStore.structure.name }"
             [profiles]="profiles"
             (submitUnassignment)="onRemoveMassAssignment($event)"
@@ -192,9 +194,11 @@ export class SmartConnectorComponent implements OnInit, OnDestroy {
     private casTypesSubscription: Subscription;
     public admc: boolean;
     public admlOfConnectorStructure: boolean;
+    public admlOfCurrentStructure: boolean;
     public showDeleteConfirmation: boolean;
-    public profiles: Array<Profile> = ['Guest', 'Personnel', 'Relative', 'Student', 'Teacher'];
+    public profiles: Array<Profile> = ['Guest', 'Personnel', 'Relative', 'Student', 'Teacher', 'AdminLocal'];
     private structureSubscriber: Subscription;
+    public assignmentGroupPickerList: GroupModel[];
     
     @ViewChild(ConnectorPropertiesComponent)
     connectorPropertiesComponent: ConnectorPropertiesComponent;
@@ -237,6 +241,7 @@ export class SmartConnectorComponent implements OnInit, OnDestroy {
 
         this.structureSubscriber = routing.observe(this.activatedRoute, 'data').subscribe((data: Data) => {
             if (data['structure']) {
+                this.assignmentGroupPickerList = this.servicesStore.structure.groups.data;
                 if (!this.hasStructureChildren() && this.currentTab === this.MASS_ASSIGNMENT_TAB) {
                     this.currentTab = this.PROPERTIES_TAB;
                 }
@@ -249,6 +254,7 @@ export class SmartConnectorComponent implements OnInit, OnDestroy {
 
         this.setAdmc();
         this.setAdmlOfConnectorStructure();
+        this.setAdmlOfCurrentStructure();
     }
 
     ngOnDestroy() {
@@ -262,6 +268,13 @@ export class SmartConnectorComponent implements OnInit, OnDestroy {
         const session: Session = await SessionModel.getSession();
         if (session.functions && session.functions['ADMIN_LOCAL'] && session.functions['ADMIN_LOCAL'].scope) {
             this.admlOfConnectorStructure = session.functions['ADMIN_LOCAL'].scope.includes(this.servicesStore.connector.structureId);
+        }
+    }
+
+    public async setAdmlOfCurrentStructure() {
+        const session: Session = await SessionModel.getSession();
+        if (session.functions && session.functions['ADMIN_LOCAL'] && session.functions['ADMIN_LOCAL'].scope) {
+            this.admlOfCurrentStructure = session.functions['ADMIN_LOCAL'].scope.includes(this.servicesStore.structure.id);
         }
     }
 
@@ -287,6 +300,10 @@ export class SmartConnectorComponent implements OnInit, OnDestroy {
     }
 
     public isAssignmentDisabled(): boolean {
+        return this.isLocked() || !(this.admc || this.admlOfCurrentStructure);
+    }
+
+    public isMassAssignmentDisabled(): boolean {
         return this.isLocked() || !(this.admc || this.admlOfConnectorStructure);
     }
 

@@ -1,28 +1,25 @@
-import { ChangeDetectorRef, ChangeDetectionStrategy, Component, Input } from '@angular/core'
-import { BundlesService } from 'sijil'
-
+import { ChangeDetectionStrategy, Component, Input, Output, EventEmitter } from '@angular/core'
 
 @Component({
     selector: 'simple-select',
     template: `
-    <select [(ngModel)]="model[selected]">
-        <option *ngFor="let option of options" [ngValue]="option">
-            {{option}}
+    <select [ngModel]="model[selected]" (ngModelChange)="model[selected] = $event; selectChange.emit($event)">
+        <option *ngIf="ignoreOption" [ngValue]="ignoreOption.value">
+            {{ignoreOption.label}}
+        </option>
+        <option *ngFor="let option of options | orderBy: 'label'" [ngValue]="option.value">
+            {{option.label}}
         </option>
     </select>
     `,
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SimpleSelectComponent { 
-    constructor (
-        private bundles: BundlesService,
-        private cdRef : ChangeDetectorRef
-    ) {}
-
-    translate = (...args) => { return (<any> this.bundles.translate)(...args) }
-
+export class SimpleSelectComponent {
     @Input() selected: string;
     @Input() model : {[key:string]: string};
-    @Input() options : Array<String>;
-
+    @Input() options : Option[];
+    @Input() ignoreOption: Option[];
+    @Output() selectChange: EventEmitter<string> = new EventEmitter<string>();
 }
+
+export type Option = {value: string, label: string}

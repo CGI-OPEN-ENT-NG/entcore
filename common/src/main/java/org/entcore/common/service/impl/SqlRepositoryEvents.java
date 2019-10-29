@@ -8,10 +8,14 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import org.entcore.common.folders.FolderImporter;
 import org.entcore.common.sql.Sql;
+import org.entcore.common.sql.SqlStatementsBuilder;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -19,9 +23,11 @@ public abstract class SqlRepositoryEvents extends AbstractRepositoryEvents {
 
 	protected static final Logger log = LoggerFactory.getLogger(SqlRepositoryEvents.class);
 	protected final Sql sql = Sql.getInstance();
+    protected final FolderImporter fileImporter;
 
 	protected SqlRepositoryEvents(Vertx vertx) {
 		super(vertx);
+		fileImporter = new FolderImporter(vertx.fileSystem(), vertx.eventBus());
 	}
 
 	protected void exportTables(HashMap<String, JsonArray> queries, JsonArray cumulativeResult, String exportPath,
@@ -75,4 +81,104 @@ public abstract class SqlRepositoryEvents extends AbstractRepositoryEvents {
 		}
 	}
 
+    protected void importTables(String importPath, String schema, List<String> tables, Map<String,String> tablesWithId,
+                                String userId, String username, SqlStatementsBuilder builder, Handler<JsonObject> handler) {
+        if (tables.isEmpty()) {
+            tablesWithId.keySet().forEach(table -> {
+                if (tablesWithId.get(table).equals("DEFAULT")) {
+                    builder.raw("UPDATE " + schema + "." + table + " AS mytable " +
+                            "SET id = DEFAULT WHERE " +
+                            "(SELECT (CASE WHEN mytable.id > (SELECT (CASE WHEN is_called THEN last_value ELSE 0 END)" +
+                            " FROM " + schema + "." + table + "_id_seq) THEN TRUE " +
+                            "ELSE FALSE END))");
+                }
+            });
+            JsonArray statements = builder.build();
+            importDocumentsDependancies(importPath, userId, username, statements, done -> {
+                sql.transaction(done, message -> {
+                    int resourcesNumber = 0, duplicatesNumber = 0, errorsNumber = 0;
+                    if ("ok".equals(message.body().getString("status"))) {
+                        JsonArray results = message.body().getJsonArray("results");
+                        for (int i = 0; i < results.size(); i++) {
+                            JsonObject jo = results.getJsonObject(i);
+                            if (!"ok".equals(jo.getString("status"))) {
+                                errorsNumber++;
+                            } else {
+                                if (jo.getJsonArray("fields").contains("duplicates")) {
+                                    duplicatesNumber += jo.getJsonArray("results").getJsonArray(0).getInteger(0);
+                                }
+                                if (jo.getJsonArray("fields").contains("noduplicates")) {
+                                    resourcesNumber += jo.getJsonArray("results").getJsonArray(0).getInteger(0);
+                                }
+                            }
+                        }
+                        JsonObject reply = new JsonObject().put("status","ok").put("resourcesNumber",String.valueOf(resourcesNumber))
+                                .put("errorsNumber",String.valueOf(errorsNumber)).put("duplicatesNumber", String.valueOf(duplicatesNumber));
+                        log.info(title + " : Imported "+ resourcesNumber + " resources (" + duplicatesNumber + " duplicates) with " + errorsNumber + " errors." );
+                        handler.handle(reply);
+                    } else {
+                        log.error(title + " Import error: " + message.body().getString("message"));
+                        handler.handle(new JsonObject().put("status", "error"));
+                    }
+
+                });
+            });
+        } else {
+            String table = tables.remove(0);
+            String path = importPath + File.separator + schema + "." + table;
+            fs.readFile(path, result -> {
+                if (result.failed()) {
+                    log.error(title
+                            + " : Failed to read table "+ schema + "." + table + " in archive.");
+                    handler.handle(new JsonObject().put("status", "error"));
+                } else {
+                    JsonObject tableContent = result.result().toJsonObject();
+                    JsonArray fields = tableContent.getJsonArray("fields");
+                    JsonArray results = tableContent.getJsonArray("results");
+
+                    if (!results.isEmpty()) {
+
+                        results = transformResults(fields, results, userId, username, builder, table);
+
+                        String insert = "WITH rows AS (INSERT INTO " + schema + "." + table + " (" + String.join(",",
+                                ((List<String>) fields.getList()).stream().map(f -> "\"" + f + "\"").toArray(String[]::new)) + ") VALUES ";
+                        String conflictUpdate = "ON CONFLICT(id) DO UPDATE SET id = ";
+                        String conflictNothing = "ON CONFLICT DO NOTHING RETURNING 1) SELECT count(*) AS " + (tablesWithId.containsKey(table) ? "duplicates" : "noduplicates") + " FROM rows";
+
+                        for (int i = 0; i < results.size(); i++) {
+                            JsonArray entry = results.getJsonArray(i);
+                            String query = insert + Sql.listPrepared(entry);
+
+                            if (tablesWithId.containsKey(table)) {
+                                builder.prepared(query + conflictUpdate + tablesWithId.get(table) +
+                                        " RETURNING 1) SELECT count(*) AS noduplicates FROM rows", entry);
+                            }
+                            builder.prepared(query + conflictNothing, entry);
+                        }
+
+                    }
+                    importTables(importPath, schema, tables, tablesWithId, userId, username, builder, handler);
+                }
+            });
+        }
+    }
+
+	protected JsonArray transformResults(JsonArray fields, JsonArray results, String userId, String username,
+                                         SqlStatementsBuilder builder, String table){ return results; }
+
+    protected void importDocumentsDependancies(String importPath, String userId, String userName, JsonArray statements,
+                                             Handler<JsonArray> handler) {
+	    final String filePath = importPath + File.separator + "Documents";
+        fs.exists(filePath, exist -> {
+            if (exist.succeeded() && exist.result().booleanValue()) {
+                FolderImporter.FolderImporterContext ctx = new FolderImporter.FolderImporterContext(filePath, userId, userName);
+                fileImporter.importFoldersFlatFormat(ctx, rapport -> {
+                    fileImporter.applyFileIdsChange(ctx, statements.getList());
+                    handler.handle(statements);
+                });
+            } else {
+                handler.handle(statements);
+            }
+        });
+    }
 }

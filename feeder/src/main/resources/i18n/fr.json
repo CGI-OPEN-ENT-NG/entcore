@@ -1,6 +1,7 @@
 {
   "file.missing.in.directory" : "Le fichier {0} est manquant dans le dossier {1}.",
   "invalid.column" : "Nom de colonne \"{0}\" invalide. Veuillez vous référer aux fichiers fournis en exemple.",
+  "invalid.column.empty" : "Le format du fichier n’est pas valide. Certaines colonnes ne sont pas nommées.",
   "error.list.files" : "Erreur lors de la lecture des fichiers.",
   "null.object": "L'objet n'est pas défini.",
   "missing.type.validator" : "Le type {0} est inconnu.",
@@ -10,7 +11,7 @@
   "invalid.array.type" : "L'attribut {0} devrait être un tableau. Mais, il est de type {1}.",
   "empty.attribute" : "L'attribut {0} est vide.",
   "invalid.bounce.email": "L'attribut {0} contient l'adresse email {1} qui n'est pas utilisable.",
-  "invalid.value" : "L'attribut {0} contient une valeur invalide {1}.",
+  "invalid.value" : "Ligne {0} : L'attribut {1} contient une valeur invalide {2}.",
   "invalid.duplicate": "L'attribut {0} contient une valeur {1} qui existe déjà.",
   "Relative" : "Parent",
   "Teacher" : "Enseignant",
@@ -37,7 +38,7 @@
   "unknown.profile" : "Profil non reconnu.",
   "error.find.ids" : "Erreur lors de la recherche des identifiants.",
   "mapping.unknown.error" : "Erreur inconnue lors de la recherche des identifiants.",
-  "missing.attribute" : "Attribut {0} manquant.",
+  "missing.attribute" : "Ligne {0} : Attribut {1} manquant.",
   "birthDate" : "date de naissance",
   "lastName" : "nom",
   "firstName" : "prénom",
@@ -51,7 +52,7 @@
   "not.found.users.not.empty" : "Utilisateurs non présents dans la base.",
   "missing.student" : "Élève manquant : {0}",
   "bad.columns.number" : "Mauvais nombre de colonnes à la ligne {0}.",
-  "missing.student.soft" : "Ligne {0} : le parent {1} {2} référence un élève non retrouvé.",
+  "missing.student.soft" : "Ligne {0} : le parent {2} {3} référence un élève non retrouvé.",
   "email.hi": "Bonjour,",
   "email.signature" : "Cordialement,",
   "report.Teacher.ignored" : "Enseignants ignorés",
@@ -68,5 +69,8 @@
   "report.errors" : "Erreurs",
   "report.loadedFiles" : "Fichiers chargés",
   "validator.errorWithLine" : "Ligne {0} : {1}",
-  "invalid.child.mapping" : "Ligne {0} : valeur(s) invalide(s) associée(s) au(x) champs {1} "
+  "invalid.child.mapping" : "Ligne {0} : valeur(s) invalide(s) associée(s) au(x) champs {1} ",
+  "duplicate.externalId.in.file" : "Ligne {0} : identifiant {1} dupliqué dans le fichier.",
+  "externalId.used.in.aaf" : "L'import contient des identifiants AAF. Il n'est pas possible d'utiliser ces identifiants : {0}.",
+  "externalId.used.in.not.adml.structure" : "L'import contient des identifiants externes déjà utilisés sur d'autres établissements. Il n'est pas possible d'utiliser ces identifiants : {0}."
 }

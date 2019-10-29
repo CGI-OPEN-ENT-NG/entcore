@@ -1,9 +1,10 @@
 import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, Input } from '@angular/core'
+import { DomSanitizer } from '@angular/platform-browser'
 import { Subscription } from 'rxjs'
 import { ActivatedRoute, Router, Data, NavigationEnd, Params } from '@angular/router'
 import { routing } from '../../../core/services/routing.service'
 import { StructureModel, FlashMessageModel } from '../../../core/store'
-import { SpinnerService, NotifyService } from '../../../core/services'
+import { NotifyService } from '../../../core/services'
 import { MessageFlashService } from '../message-flash.service'
 import { MessageFlashStore } from '../message-flash.store'
 import { BundlesService } from 'sijil'
@@ -24,73 +25,88 @@ import 'trumbowyg/plugins/history/trumbowyg.history.js'
 @Component({
     selector: 'message-flash-form',
     template: `
-        <div class="container has-shadow">
-            <h2><s5l>management.message.flash.{{action}}</s5l></h2>
+    <div >
+        <div class="container has-shadow">     
+                <h2><s5l>management.message.flash.{{action}}</s5l></h2>
 
-            <fieldset>
-                <form-field label="management.message.flash.title">
-                    <input type="text" [(ngModel)]="message.title" class="is-flex-none">
-                </form-field>
-                <form-field label="management.message.flash.startDate">
-                    <date-picker [(ngModel)]="message.startDate"></date-picker>
-                </form-field>
-                <form-field label="management.message.flash.endDate">
-                    <date-picker [(ngModel)]="message.endDate"></date-picker>
-                </form-field>
-                <form-field label="management.message.flash.profiles">
-                    <multi-combo
-                        [comboModel]="comboModel"
-                        [(outputModel)]="message.profiles"
-                        [title]="'management.message.flash.chose.profiles' | translate">
-                    </multi-combo>
-                </form-field>
-                <div class="multi-combo-companion">
-                    <div *ngFor="let item of message.profiles"
-                        (click)="deselect(item)">
-                        <s5l>{{item}}</s5l>
-                        <i class="fa fa-trash is-size-5"></i>
+                <fieldset>
+                    <form-field label="management.message.flash.title">
+                        <input type="text" [(ngModel)]="message.title" class="is-flex-none">
+                    </form-field>
+                    <form-field label="management.message.flash.startDate">
+                        <date-picker [(ngModel)]="message.startDate"></date-picker>
+                    </form-field>
+                    <form-field label="management.message.flash.endDate">
+                        <date-picker [(ngModel)]="message.endDate"></date-picker>
+                    </form-field>
+                    <form-field label="management.message.flash.profiles">
+                        <multi-combo
+                            [comboModel]="comboModel"
+                            [(outputModel)]="message.profiles"
+                            [title]="'management.message.flash.chose.profiles' | translate">
+                        </multi-combo>
+                    </form-field>
+                    <div class="multi-combo-companion">
+                        <div *ngFor="let item of message.profiles"
+                            (click)="deselect(item)">
+                            <s5l>{{item}}</s5l>
+                            <i class="fa fa-trash is-size-5"></i>
+                        </div>
                     </div>
-                </div>
-                <form-field *ngIf="!!structure && !!structure.children && structure.children.length > 0"
-                label="management.message.flash.selected.etab">
-                    <span class="is-flex-none has-right-margin-40">{{message.subStructures.length}}</span>
-                    <button class="is-flex-none" (click)="openLightbox()"><s5l>management.message.flash.manage</s5l></button>
-                </form-field>
-                <form-field label="management.message.flash.language">
-                    <mono-select [(ngModel)]="selectedLanguage" (ngModelChange)="updateEditor($event)" [options]="languageOptions()">
-                    </mono-select>
-                </form-field>
-                <form-field label="management.message.flash.color">
-                    <span class="is-flex-none">
-                        <div class="legend-square red" [ngClass]="{ outlined: message.color == 'red' }" (click)="message.color = 'red'"></div>
-                        <div class="legend-square green" [ngClass]="{ outlined: message.color == 'green'}" (click)="message.color = 'green'"></div>
-                        <div class="legend-square blue" [ngClass]="{ outlined: message.color == 'blue' }" (click)="message.color = 'blue'"></div>
-                        <div class="legend-square orange" [ngClass]="{ outlined: message.color == 'orange' }" (click)="message.color = 'orange'"></div>
-                        <input type="color" ng-model="message.customColor" [ngClass]="{ outlined: !!message.customColor }" [(ngModel)]="message.customColor">
-                    </span>
-                </form-field>
-                <form-field label="management.message.flash.notification">
-                    <span class="is-flex-none">
-                        <input type="checkbox" [(ngModel)]="mailNotification" [disabled]="areSelectedChildren() || !isToday()">
-                        <s5l>management.message.flash.notification.email</s5l>
-                        <input class="has-left-margin-40 is-hidden" type="checkbox" [(ngModel)]="pushNotification" [disabled]="areSelectedChildren() || !isToday()">
-                        <s5l class="is-hidden">management.message.flash.notification.mobile</s5l>
-                    </span>
-                </form-field>
-                <div *ngIf="areSelectedChildren() || !isToday()">
-                    <i class="fa fa-exclamation-circle"></i>
-                    <s5l>management.message.flash.lightbox.warning.notification</s5l>
-                </div>
-            </fieldset>
+                    <form-field *ngIf="!!structure && !!structure.children && structure.children.length > 0"
+                    label="management.message.flash.selected.etab">
+                        <span class="is-flex-none has-right-margin-40">{{message.subStructures.length}}</span>
+                        <button class="is-flex-none" (click)="openLightbox()"><s5l>management.message.flash.manage</s5l></button>
+                    </form-field>
+                    <form-field label="management.message.flash.language">
+                        <mono-select [(ngModel)]="selectedLanguage" (ngModelChange)="updateEditor($event)" [options]="languageOptions()">
+                        </mono-select>
+                    </form-field>
+                    <form-field label="management.message.flash.color">
+                        <span class="is-flex-none">
+                            <div class="legend-square grey-dark" [ngClass]="{ outlined: message.color == 'grey-dark' }" (click)="message.color = 'grey-dark'"></div>
+                            <div class="legend-square red" [ngClass]="{ outlined: message.color == 'red' }" (click)="message.color = 'red'"></div>
+                            <div class="legend-square orange" [ngClass]="{ outlined: message.color == 'orange' }" (click)="message.color = 'orange'"></div>
+                            <div class="legend-square green" [ngClass]="{ outlined: message.color == 'green'}" (click)="message.color = 'green'"></div>
+                            <div class="legend-square blue" [ngClass]="{ outlined: message.color == 'blue' }" (click)="message.color = 'blue'"></div>
+                            <input type="color" ng-model="message.customColor" [ngClass]="{ outlined: !!message.customColor }" [(ngModel)]="message.customColor">
+                        </span>
+                    </form-field>
+                    <form-field label="management.message.flash.notification">
+                        <span class="is-flex-none">
+                            <input type="checkbox" [(ngModel)]="mailNotification" [disabled]="areSelectedChildren() || !isToday()">
+                            <s5l>management.message.flash.notification.email</s5l>
+                            <input class="has-left-margin-40" type="checkbox" [(ngModel)]="pushNotification" [disabled]="areSelectedChildren() || !isToday()">
+                            <s5l>management.message.flash.notification.mobile</s5l>
+                        </span>
+                    </form-field>
+                    <div *ngIf="areSelectedChildren() || !isToday()">
+                        <i class="fa fa-exclamation-circle"></i>
+                        <s5l>management.message.flash.lightbox.warning.notification</s5l>
+                    </div>
+                </fieldset>
 
-            <div class="has-top-margin-40" style="width: 50%;">
-                <textarea id="trumbowyg-editor">{{ message.contents[selectedLanguage] }}</textarea>
-            </div>
+                <div class="has-top-margin-40" style="width: 100%; display : flex">
+                    <div style="flex: 1 1; margin: 10px;">
+                        <h3><s5l>flashmsg.message</s5l> :</h3>
+                        <textarea id="trumbowyg-editor">{{ message.contents[selectedLanguage] }}</textarea>
+                    </div>
+                    <message-flash-preview
+                        [text]="sanitized.bypassSecurityTrustHtml(message.contents[selectedLanguage])"
+                        [color]="message.color"
+                        [customColor]="message.customColor"
+                        style="width:50%;">
+                    </message-flash-preview>
+                </div>
 
-            <div class="has-top-margin-40">
-                <button (click)="goBack(false)"><s5l>management.message.flash.cancel</s5l></button>
-                <button [disabled]="!isUploadable()" (click)="upload()"><s5l>management.message.flash.upload</s5l></button>
-            </div>
+                <div class="has-top-margin-40">
+                    <button (click)="goBack(false)"><s5l>management.message.flash.cancel</s5l></button>
+                    <button [disabled]="!isUploadable()" (click)="upload()"><s5l>management.message.flash.upload</s5l></button>
+                </div>
+
+           
+
+           
 
             <lightbox *ngIf="structure"
                 [show]="showLightbox" (onClose)="closeLightbox()">
@@ -109,13 +125,15 @@ import 'trumbowyg/plugins/history/trumbowyg.history.js'
                 <s5l>management.message.flash.lightbox.warning</s5l>
                 <div><button class="is-pulled-right" (click)="saveAndClose()"><s5l>management.message.flash.lightbox.save</s5l></button></div>
             </lightbox>
-
         </div>
+        
+        
+    </div>
     `,
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class MessageFlashFormComponent implements OnInit{
-    
+export class MessageFlashFormComponent implements OnInit {
+
     structure: StructureModel;
     dataSubscriber: Subscription;
     routeSubscriber: Subscription;
@@ -134,14 +152,15 @@ export class MessageFlashFormComponent implements OnInit{
 
     @Input() action: 'create' | 'edit' | 'duplicate';
     @Input() messageId: string = 'none';
-    
+
     constructor(
         public route: ActivatedRoute,
         public router: Router,
         public cdRef: ChangeDetectorRef,
         public bundles: BundlesService,
-        private ns: NotifyService,
-        public messageStore: MessageFlashStore) {}
+        public ns: NotifyService,
+        public messageStore: MessageFlashStore,
+        public sanitized: DomSanitizer) { }
 
     ngOnInit(): void {
 
@@ -160,28 +179,31 @@ export class MessageFlashFormComponent implements OnInit{
                 this.message.id = this.originalMessage.id;
                 this.message.title = this.originalMessage.title;
                 var _startDate: Date = new Date(this.originalMessage.startDate);
-                this.message.startDate = new Date(_startDate.getTime() - (_startDate.getTimezoneOffset() * 60000 )).toISOString();
+                this.message.startDate = new Date(_startDate.getTime() - (_startDate.getTimezoneOffset() * 60000)).toISOString();
                 var _endDate: Date = new Date(this.originalMessage.endDate);
-                this.message.endDate = new Date(_endDate.getTime() - (_endDate.getTimezoneOffset() * 60000 )).toISOString();
+                this.message.endDate = new Date(_endDate.getTime() - (_endDate.getTimezoneOffset() * 60000)).toISOString();
                 if (!!this.originalMessage.color) {
                     this.message.color = this.originalMessage.color;
                 }
-                if (!! this.originalMessage.customColor) {
+                if (!!this.originalMessage.customColor) {
                     this.message.customColor = this.originalMessage.customColor;
                 }
                 this.message.profiles = Object.assign([], this.originalMessage.profiles);
                 this.message.contents = JSON.parse(JSON.stringify(this.originalMessage.contents));
                 MessageFlashService.getSubStructuresByMessageId(this.originalMessage.id)
-                .then(data => {
-                    this.message.subStructures = data.map(item => item['structure_id']);
-                    this.cdRef.detectChanges();
-                });
+                    .then(data => {
+                        this.message.subStructures = data.map(item => item['structure_id']);
+                        this.cdRef.detectChanges();
+                    });
+            }
+            if (this.action === 'create') {
+                this.message.color = 'red';
             }
             this.cdRef.detectChanges();
         })
 
         this.routerSubscriber = this.router.events.subscribe(e => {
-            if(e instanceof NavigationEnd) {
+            if (e instanceof NavigationEnd) {
                 this.cdRef.markForCheck();
             }
         })
@@ -207,12 +229,12 @@ export class MessageFlashFormComponent implements OnInit{
             removeformatPasted: true,
             semantic: false,
             btns: [['historyUndo', 'historyRedo'], ['strong', 'em', 'underline'],
-                    ['justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull'],
-                    ['foreColor', 'fontfamily', 'fontsize'], ['link'], ['viewHTML']]
+            ['justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull'],
+            ['foreColor', 'fontfamily', 'fontsize'], ['link'], ['viewHTML']]
         });
         trumbowygEditor.on('tbwchange', () => {
             var transform = trumbowygEditor.trumbowyg('html')
-            .replace(/<i>/g,'<em>').replace(/<\/i[^>]*>/g,'</em>');
+                .replace(/<i>/g, '<em>').replace(/<\/i[^>]*>/g, '</em>');
             this.message.contents[this.selectedLanguage] = transform;
             this.cdRef.detectChanges();
         });
@@ -240,9 +262,9 @@ export class MessageFlashFormComponent implements OnInit{
         this.message.profiles.splice(this.message.profiles.indexOf(item), 1);
     }
 
-    languageOptions(): {value: string, label: string}[] {
+    languageOptions(): { value: string, label: string }[] {
         return this.loadedLanguages.map(lang => {
-            return { value: lang, label: ('management.message.flash.language.'+lang) }
+            return { value: lang, label: ('management.message.flash.language.' + lang) }
         });
     }
 
@@ -266,9 +288,9 @@ export class MessageFlashFormComponent implements OnInit{
     isToday(): boolean {
         var now: Date = new Date();
         var startDate: Date = new Date(this.message.startDate);
-        var res = now.getDate() ==  startDate.getDate()
-        && now.getMonth() == startDate.getMonth()
-        && now.getFullYear() == startDate.getFullYear();
+        var res = now.getDate() == startDate.getDate()
+            && now.getMonth() == startDate.getMonth()
+            && now.getFullYear() == startDate.getFullYear();
         if (!res) {
             this.mailNotification = false;
             this.pushNotification = false;
@@ -299,18 +321,18 @@ export class MessageFlashFormComponent implements OnInit{
         this.cdRef.detectChanges();
     }
 
-    addOrRemoveChild(child: { name: string, id: string, children: any[], check: boolean}): void {
+    addOrRemoveChild(child: { name: string, id: string, children: any[], check: boolean }): void {
         let index = this.lightboxSubStructures.findIndex(subId => subId === child.id);
         if (index == -1) {
             this.lightboxSubStructures.push(child.id);
             this.checkAllChildren(child.children);
         } else {
-            this.lightboxSubStructures = this.lightboxSubStructures.slice(0,index).concat(this.lightboxSubStructures.slice(index+1,this.lightboxSubStructures.length));
+            this.lightboxSubStructures = this.lightboxSubStructures.slice(0, index).concat(this.lightboxSubStructures.slice(index + 1, this.lightboxSubStructures.length));
             this.uncheckAllChildren(child.children);
         }
     }
 
-    private checkAllChildren(children: { name: string, id: string, children: any[], check: boolean}[]) {
+    private checkAllChildren(children: { name: string, id: string, children: any[], check: boolean }[]) {
         children.forEach(child => {
             child.check = true;
             if (this.lightboxSubStructures.findIndex(subId => subId === child.id) == -1) {
@@ -320,18 +342,18 @@ export class MessageFlashFormComponent implements OnInit{
         })
     }
 
-    private uncheckAllChildren(children: { name: string, id: string, children: any[], check: boolean}[]) {
+    private uncheckAllChildren(children: { name: string, id: string, children: any[], check: boolean }[]) {
         children.forEach(child => {
             child.check = false;
             let index = this.lightboxSubStructures.findIndex(subId => subId === child.id);
             if (index != -1) {
-                this.lightboxSubStructures = this.lightboxSubStructures.slice(0,index).concat(this.lightboxSubStructures.slice(index+1,this.lightboxSubStructures.length));
+                this.lightboxSubStructures = this.lightboxSubStructures.slice(0, index).concat(this.lightboxSubStructures.slice(index + 1, this.lightboxSubStructures.length));
             }
             this.uncheckAllChildren(child.children);
         })
     }
 
-    private getItems(): { name: string, id: string, children: any[], check: boolean}[] {
+    private getItems(): { name: string, id: string, children: any[], check: boolean }[] {
         var that = this;
         let myMap = function (child: StructureModel) {
             return {
@@ -352,9 +374,9 @@ export class MessageFlashFormComponent implements OnInit{
 
     isUploadable(): boolean {
         return !!this.message && !!this.message.title && !!this.message.startDate && !!this.message.endDate
-        && !!this.message.profiles && this.message.profiles.length > 0 && (!!this.message.color || !!this.message.customColor)
-        && !!this.message.contents && Object.keys(this.message.contents).length > 0
-        && Object.values(this.message.contents).findIndex(val => !!val) != -1;
+            && !!this.message.profiles && this.message.profiles.length > 0 && (!!this.message.color || !!this.message.customColor)
+            && !!this.message.contents && Object.keys(this.message.contents).length > 0
+            && Object.values(this.message.contents).findIndex(val => !!val) != -1;
     }
 
     upload() {
@@ -373,16 +395,16 @@ export class MessageFlashFormComponent implements OnInit{
             }
             this.goBack(true);
             this.ns.success(
-                { key: 'notify.management.'+key+'.success.content', parameters: {} },
-                { key: 'notify.management.'+key+'.success.title', parameters: {} }
+                { key: 'notify.management.' + key + '.success.content', parameters: {} },
+                { key: 'notify.management.' + key + '.success.title', parameters: {} }
             );
         })
-        .catch((error) => {
-            this.ns.error(
-                { key: 'notify.management.'+key+'.error.content', parameters: {} },
-                { key: 'notify.management.'+key+'.error.title', parameters: {} }
-            );
-        });
+            .catch((error) => {
+                this.ns.error(
+                    { key: 'notify.management.' + key + '.error.content', parameters: {} },
+                    { key: 'notify.management.' + key + '.error.title', parameters: {} }
+                );
+            });
     }
 
     goBack(forceReload: boolean): void {

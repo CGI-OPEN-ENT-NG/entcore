@@ -105,6 +105,13 @@ public class AppRegistryController extends BaseController {
 		appRegistryService.listApplicationsWithActions(structureId, actionType, arrayResponseHandler(request));
 	}
 
+	@Get("/applications/roles")
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void listApplicationsWithRoles(HttpServerRequest request) {
+		String structureId = request.params().get("structureId");
+		appRegistryService.listApplicationsWithRoles(structureId, arrayResponseHandler(request));
+	}
+
 	@Get("structure/:structureId/application/:appId/groups/roles")
 	@SecuredAction(type = ActionType.RESOURCE, value = "")
 	public void listApplicationRolesWithGroups(final HttpServerRequest request) {
@@ -603,6 +610,10 @@ public class AppRegistryController extends BaseController {
 				break;
 			case "list-cas-connectors" :
 				appRegistryService.listCasConnectors(busArrayHandler(message));
+				break;
+			case "set-roles-and-profiles-by-structureId" :
+				JsonArray data = message.body().getJsonArray("data");
+				appRegistryService.massAuthorization(data, busResponseHandler(message));
 				break;
 			default:
 				message.reply(new JsonObject().put("status", "error")

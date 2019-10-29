@@ -1,9 +1,10 @@
 import { Component, OnInit, OnDestroy } from "@angular/core";
 import { Subscription } from "rxjs";
-import { ActivatedRoute } from "@angular/router";
+import { ActivatedRoute, Data } from "@angular/router";
 import { ServicesStore } from "../../services.store";
 import { RoleModel, GroupModel, StructureModel } from "../../../core/store";
 import { ServicesService } from "../../services.service";
+import { routing } from "../../../core/services";
 
 @Component({
     selector: 'smart-application',
@@ -28,6 +29,7 @@ import { ServicesService } from "../../services.service";
         <application-assignment 
             *ngIf="currentTab  === 'assignment'"
             [application]="servicesStore.application"
+            [assignmentGroupPickerList]="assignmentGroupPickerList"
             (remove)="onRemoveAssignment($event)"
             (add)="onAddAssignment($event)">
         </application-assignment>
@@ -59,6 +61,8 @@ export class SmartApplicationComponent implements OnInit, OnDestroy {
 
     private routeParamsSubscription: Subscription;
     private rolesSubscription: Subscription;
+    private structureSubscriber: Subscription;
+    public assignmentGroupPickerList: GroupModel[];
 
     constructor(private activatedRoute: ActivatedRoute,
         public servicesStore: ServicesStore,
@@ -81,11 +85,21 @@ export class SmartApplicationComponent implements OnInit, OnDestroy {
                     this.servicesStore.structure.distributions);
             }
         });
+
+        this.structureSubscriber = routing.observe(this.activatedRoute, 'data').subscribe((data: Data) => {
+            if (data['structure']) {
+                this.assignmentGroupPickerList = this.servicesStore.structure.groups.data;
+                if (!this.structureHasChildren(this.servicesStore.structure) && this.currentTab === 'massAssignment') {
+                    this.currentTab = 'assignment';
+                }
+            }
+        });
     }
 
     ngOnDestroy(): void {
         this.routeParamsSubscription.unsubscribe();
         this.rolesSubscription.unsubscribe();
+        this.structureSubscriber.unsubscribe();
     }
 
     public onAddAssignment($event: {group: GroupModel, role: RoleModel}) {

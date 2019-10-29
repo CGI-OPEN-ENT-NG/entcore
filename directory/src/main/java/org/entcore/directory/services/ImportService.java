@@ -20,6 +20,7 @@
 package org.entcore.directory.services;
 
 import fr.wseduc.webutils.Either;
+import org.entcore.common.user.UserInfos;
 import org.entcore.directory.pojo.ImportInfos;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -27,8 +28,23 @@ import io.vertx.core.json.JsonObject;
 
 public interface ImportService {
 
-	void validate(ImportInfos importInfos, Handler<Either<JsonObject, JsonObject>> handler);
+	void validate(ImportInfos importInfos, UserInfos user, Handler<Either<JsonObject, JsonObject>> handler);
+
+	void validate(String id, UserInfos user, Handler<Either<JsonObject, JsonObject>> handler);
 
 	void doImport(ImportInfos result, Handler<Either<JsonObject, JsonObject>> eitherHandler);
 
+	void doImport(String importId, Handler<Either<JsonObject, JsonObject>> eitherHandler);
+
+	void columnsMapping(ImportInfos result, Handler<Either<JsonObject,JsonObject>> handler);
+
+	void classesMapping(ImportInfos result, Handler<Either<JsonObject,JsonObject>> handler);
+
+	void addLine(String importId, String profile, JsonObject line, Handler<Either<String,JsonObject>> handler);
+
+	void updateLine(String importId, String profile, JsonObject line, Handler<Either<String,JsonObject>> handler);
+
+	void deleteLine(String importId, String profile, Integer line, Handler<Either<String,JsonObject>> handler);
+
+	void findById(String importId,  Handler<Either<String,JsonObject>> handler);
 }

@@ -105,6 +105,22 @@ public class Sql {
 		eb.send(address, j, handlerToAsyncHandler(handler));
 	}
 
+	public void upsert(String table, JsonArray fields, JsonArray values, JsonArray conflictFields,
+					   JsonArray updateFields, String returning,
+					   Handler<Message<JsonObject>> handler) {
+		JsonObject j = new JsonObject()
+				.put("action", "upsert")
+				.put("table", table)
+				.put("fields", fields)
+				.put("values", values)
+				.put("conflictFields", conflictFields)
+				.put("updateFields", updateFields);
+		if (returning != null && !returning.trim().isEmpty()) {
+			j.put("returning", returning);
+		}
+		eb.send(address, j, handlerToAsyncHandler(handler));
+	}
+
 	public void select(String table, JsonArray fields, Handler<Message<JsonObject>> handler) {
 		JsonObject j = new JsonObject()
 				.put("action", "select")
@@ -130,6 +146,10 @@ public class Sql {
 				insertQuery +" WHERE NOT EXISTS (SELECT * FROM upsert);";
 	}
 
+	public static String listPrepared(JsonArray array) {
+		return listPrepared(array.getList().toArray());
+	}
+
 	public static String listPrepared(List array) {
 		return listPrepared(array.toArray());
 	}
@@ -143,6 +163,14 @@ public class Sql {
 			sb.deleteCharAt(sb.length() - 1);
 		}
 		return sb.append(")").toString();
+	}
+
+	public static String arrayPrepared(JsonArray array) {
+		return arrayPrepared(array.getList().toArray(), false);
+	}
+
+	public static String arrayPrepared(List array) {
+		return arrayPrepared(array.toArray(), false);
 	}
 
 	public static String arrayPrepared(Object[] array) {

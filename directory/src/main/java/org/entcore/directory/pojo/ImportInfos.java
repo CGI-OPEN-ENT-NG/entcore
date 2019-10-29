@@ -22,24 +22,20 @@ package org.entcore.directory.pojo;
 import static fr.wseduc.webutils.Utils.*;
 
 import fr.wseduc.webutils.DefaultAsyncResult;
-import fr.wseduc.webutils.collections.Joiner;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
-import io.vertx.core.Vertx;
+import io.vertx.core.*;
 import io.vertx.core.file.FileSystem;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ImportInfos {
 
 	private static final Logger log = LoggerFactory.getLogger(ImportInfos.class);
+	private static final long MAX_FILE_SIZE = 1024 * 1024L;
 
 	private String UAI;
 	private String structureName;
@@ -52,6 +48,8 @@ public class ImportInfos {
 	private String structureId;
 	private String structureExternalId;
 	private String overrideClass;
+	private Map<String, Object> mappings;
+	private Map<String, Object> classesMapping;
 	private String language;
 
 	public String getFeeder() {
@@ -110,6 +108,14 @@ public class ImportInfos {
 		this.structureName = structureName;
 	}
 
+	public String getStructureName() {
+		return structureName;
+	}
+
+	public String getUAI() {
+		return UAI;
+	}
+
 	public String getStructureExternalId() {
 		return structureExternalId;
 	}
@@ -134,7 +140,26 @@ public class ImportInfos {
 		this.overrideClass = overrideClass;
 	}
 
+	public Map<String, Object> getMappings() {
+		return mappings;
+	}
+
+	public void setMappings(JsonObject mappings) {
+		this.mappings = (mappings != null) ? mappings.getMap() : null;
+	}
+
+	public Map<String, Object> getClassesMapping() {
+		return classesMapping;
+	}
+
+	public void setClassesMapping(JsonObject classesMapping) {
+		this.classesMapping = (classesMapping != null) ? classesMapping.getMap() : null;
+	}
+
 	public void validate(final boolean isAdmc, final Vertx vertx, final Handler<AsyncResult<String>> handler) {
+		if (isAdmc && isEmpty(structureExternalId)) {
+			structureExternalId = UUID.randomUUID().toString();
+		}
 		if (!isAdmc && isEmpty(structureId)) {
 			handler.handle(new DefaultAsyncResult<>("invalid.structure.id"));
 		} else if (isEmpty(structureName)) {
@@ -146,7 +171,22 @@ public class ImportInfos {
 				public void handle(AsyncResult<List<String>> list) {
 					if (list.succeeded()) {
 						if (list.result().size() > 0) {
-							moveFiles(list.result(), fs, handler);
+							List<Future> futures = new ArrayList<>();
+							for (String p: list.result()) {
+								futures.add(getFileSize(vertx, p));
+							}
+							CompositeFuture.all(futures).setHandler(ar -> {
+								if (ar.succeeded()) {
+									if (ar.result().list().stream().allMatch(size -> ((Long) size) < MAX_FILE_SIZE)) {
+										moveFiles(list.result(), fs, handler);
+									} else {
+										handler.handle(new DefaultAsyncResult<>("csv.file.too.long"));
+									}
+								} else {
+									log.error("Error counting files lines.", ar.cause());
+									handler.handle(new DefaultAsyncResult<>("csv.file.size.error"));
+								}
+							});
 						} else {
 							handler.handle(new DefaultAsyncResult<>("missing.csv.files"));
 						}
@@ -158,6 +198,18 @@ public class ImportInfos {
 		} else {
 			handler.handle(new DefaultAsyncResult<>("invalid.import.type"));
 		}
+	}
+
+	private Future getFileSize(Vertx vertx, String p) {
+		Future<Long> future = Future.future();
+		vertx.fileSystem().props(p, ar -> {
+			if (ar.succeeded()) {
+				future.complete(ar.result().size());
+			} else {
+				future.fail(ar.cause());
+			}
+		});
+		return future;
 	}
 
 	private void moveFiles(final List<String> l, final FileSystem fs, final Handler<AsyncResult<String>> handler) {

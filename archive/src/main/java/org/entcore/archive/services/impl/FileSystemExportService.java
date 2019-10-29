@@ -34,6 +34,7 @@ import org.entcore.common.neo4j.Neo4j;
 import org.entcore.common.notification.TimelineHelper;
 import org.entcore.common.storage.Storage;
 import org.entcore.common.user.UserInfos;
+import org.entcore.common.utils.StringUtils;
 import org.entcore.common.utils.Zip;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
@@ -59,6 +60,7 @@ public class FileSystemExportService implements ExportService {
 	private final FileSystem fs;
 	private final EventBus eb;
 	private final String exportPath;
+	private final String handlerActionName;
 	private final EmailSender notification;
 	private final Storage storage;
 	private static final Logger log = LoggerFactory.getLogger(FileSystemExportService.class);
@@ -66,65 +68,84 @@ public class FileSystemExportService implements ExportService {
 	private final Map<String, UserExport> userExport;
 	private final TimelineHelper timeline;
 
+	private static final long DOWNLOAD_READY = -1l;
 	private static final long DOWNLOAD_IN_PROGRESS = -2l;
 	private static final long EXPORT_ERROR = -4l;
 
-	public FileSystemExportService(Vertx vertx, FileSystem fs, EventBus eb, String exportPath,
+	public FileSystemExportService(Vertx vertx, FileSystem fs, EventBus eb, String exportPath, String customHandlerActionName,
 			EmailSender notification, Storage storage,
 			Map<String, Long> userExportInProgress, TimelineHelper timeline) {
 		this.vertx = vertx;
 		this.fs = fs;
 		this.eb = eb;
 		this.exportPath = exportPath;
+		this.handlerActionName = customHandlerActionName == null ? "export" : customHandlerActionName;
 		this.notification = notification;
 		this.storage = storage;
-		this.userExportInProgress = userExportInProgress;
+		this.userExportInProgress = userExportInProgress != null ? userExportInProgress : new HashMap<String, Long>();
 		this.userExport = new HashMap<>();
 		this.timeline = timeline;
 	}
 
 	@Override
-	public void export(final UserInfos user, final String locale, JsonArray apps, final HttpServerRequest request,
-					   final Handler<Either<String, String>> handler) {
-		userExportExists(user, new Handler<Boolean>() {
+	public void export(final UserInfos user, final String locale, JsonArray apps, JsonArray resourcesIds, final HttpServerRequest request,
+					   final Handler<Either<String, String>> handler)
+	{
+		userExportExists(user, new Handler<Boolean>()
+		{
 			@Override
-			public void handle(Boolean event) {
-				if (Boolean.FALSE.equals(event)) {
+			public void handle(Boolean event)
+			{
+				if (Boolean.FALSE.equals(event))
+				{
 					long now = System.currentTimeMillis();
 					final String exportId = now + "_" +user.getUserId();
+
 					userExportInProgress.put(user.getUserId(), now);
-					userExport.put(user.getUserId(), new UserExport(new HashSet<>(apps.getList())));
+					userExport.put(user.getUserId(), new UserExport(new HashSet<>(apps.getList()), exportId));
+
 					final String exportDirectory = exportPath + File.separator + exportId;
-					fs.mkdirs(exportDirectory, new Handler<AsyncResult<Void>>() {
+
+					fs.mkdirs(exportDirectory, new Handler<AsyncResult<Void>>()
+					{
 						@Override
-						public void handle(AsyncResult<Void> event) {
-							if (event.succeeded()) {
+						public void handle(AsyncResult<Void> event)
+						{
+							if (event.succeeded())
+							{
 								final Set<String> g = (user.getGroupsIds() != null) ? new
 									HashSet<>(user.getGroupsIds()) : new HashSet<String>();
-								User.getOldGroups(user.getUserId(), new Handler<JsonArray>() {
+								User.getOldGroups(user.getUserId(), new Handler<JsonArray>()
+								{
 									@Override
-									public void handle(JsonArray objects) {
+									public void handle(JsonArray objects)
+									{
 										g.addAll(objects.getList());
 										JsonObject j = new JsonObject()
-												.put("action", "export")
+												.put("action", handlerActionName)
 												.put("exportId", exportId)
 												.put("userId", user.getUserId())
 												.put("groups", new fr.wseduc.webutils.collections.JsonArray(new ArrayList<>(g)))
 												.put("path", exportDirectory)
 												.put("locale", locale)
 												.put("host", Renders.getScheme(request) + "://" + request.headers().get("Host"))
-												.put("apps", apps);
+												.put("apps", apps)
+												.put("resourcesIds", resourcesIds);
 										eb.publish("user.repository", j);
 										handler.handle(new Either.Right<String, String>(exportId));
 									}
 								});
-							} else {
+							}
+							else
+							{
 								log.error("Create export directory error.", event.cause());
 								handler.handle(new Either.Left<String, String>("export.directory.create.error"));
 							}
 						}
 					});
-				} else {
+				}
+				else
+				{
 					handler.handle(new Either.Left<String, String>("export.exists"));
 				}
 			}
@@ -135,6 +156,19 @@ public class FileSystemExportService implements ExportService {
 	public void userExportExists(UserInfos user, final Handler<Boolean> handler) {
 		handler.handle(userExportInProgress.containsKey(user.getUserId()));
 	}
+
+	@Override
+	public void userExportId(UserInfos user, Handler<String> handler) {
+		String userId = user.getUserId();
+		if (userExportInProgress.containsKey(userId)
+				&& userExportInProgress.get(userId) != DOWNLOAD_READY) {
+			UserExport ue = userExport.get(user.getUserId());
+			handler.handle(ue != null ? ue.getExportId() : null);
+		} else {
+			handler.handle(null);
+		}
+	}
+
 
 	@Override
 	public boolean userExportExists(String exportId) {
@@ -168,7 +202,8 @@ public class FileSystemExportService implements ExportService {
 	}
 
 	@Override
-	public void exported(final String exportId, String status, final String locale, final String host) {
+	public void exported(final String exportId, String status, final String locale, final String host)
+	{
 		log.debug("Exported method");
 		if (exportId == null) {
 			log.error("Export receive event without exportId ");
@@ -182,6 +217,7 @@ public class FileSystemExportService implements ExportService {
 		final UserExport export = userExport.get(userId);
 		final int counter = export.incrementAndGetCounter();
 		final boolean isFinished = counter == export.getExpectedExport().size();
+
 		if (!"ok".equals(status)) {
 			export.setProgress(EXPORT_ERROR);
 		}
@@ -190,7 +226,7 @@ public class FileSystemExportService implements ExportService {
 			JsonObject j = new JsonObject()
 					.put("status", "error")
 					.put("message", "export.error");
-			eb.publish("export." + exportId, j);
+			eb.publish(getExportBusAddress(exportId), j);
 			userExportInProgress.remove(userId);
 			fs.deleteRecursive(exportDirectory, true, new Handler<AsyncResult<Void>>() {
 				@Override
@@ -206,7 +242,7 @@ public class FileSystemExportService implements ExportService {
 			return;
 		}
 		if (isFinished) {
-			addManifestToExport(exportId, exportDirectory, new Handler<AsyncResult<Void>>() {
+			addManifestToExport(exportId, exportDirectory, locale, new Handler<AsyncResult<Void>>() {
 				@Override
 				public void handle(AsyncResult<Void> event) {
 					Zip.getInstance().zipFolder(exportDirectory, exportDirectory + ".zip", true,
@@ -233,7 +269,8 @@ public class FileSystemExportService implements ExportService {
 									}
 								}
 
-								private void storeZip(final Message<JsonObject> event) {
+								private void storeZip(final Message<JsonObject> event)
+								{
 									storage.writeFsFile(exportId, exportDirectory + ".zip", new Handler<JsonObject>() {
 										@Override
 										public void handle(JsonObject res) {
@@ -244,7 +281,7 @@ public class FileSystemExportService implements ExportService {
 												userExportInProgress.remove(userId);
 												publish(event);
 											} else {
-												userExportInProgress.put(userId,-1l);
+												userExportInProgress.put(userId,DOWNLOAD_READY);
 												MongoDb.getInstance().save(
 														Archive.ARCHIVES, new JsonObject().put("file_id", exportId)
 																.put("date", MongoDb.now()),
@@ -273,13 +310,16 @@ public class FileSystemExportService implements ExportService {
 								}
 
 								private void publish(final Message<JsonObject> event) {
-									final String address = "export." + exportId;
+									final String address = getExportBusAddress(exportId);
 									eb.send(address, event.body(), new DeliveryOptions().setSendTimeout(5000l),
 											new Handler<AsyncResult<Message<JsonObject>>>() {
 												@Override
 												public void handle(AsyncResult<Message<JsonObject>> res) {
-													if (!res.succeeded() && userExportExists(exportId)
-															&& !downloadIsInProgress(exportId)) {
+													if ((!res.succeeded() && userExportExists(exportId)
+															&& !downloadIsInProgress(exportId))
+															|| (res.succeeded()
+															&& res.result().body().getBoolean("sendNotifications", false)
+															.booleanValue())) {
 														if (notification != null) {
 															sendExportEmail(exportId, locale,
 																	event.body().getString("status"), host);
@@ -326,19 +366,25 @@ public class FileSystemExportService implements ExportService {
 		return v != null && v == DOWNLOAD_IN_PROGRESS;
 	}
 
-	private void addManifestToExport(String exportId, String exportDirectory, Handler<AsyncResult<Void>> handler) {
+	private void addManifestToExport(String exportId, String exportDirectory, String locale, Handler<AsyncResult<Void>> handler) {
 		LocalMap<String, String> versionMap = vertx.sharedData().getLocalMap("versions");
 		JsonObject manifest = new JsonObject();
 		Set<String> expectedExport = this.userExport.get(getUserId(exportId)).getExpectedExport();
-		versionMap.forEach((k, v) -> {
-			String[] s = k.split("\\.");
-			// Removing of "-" for scrapbook
-			if (expectedExport.contains((s[s.length - 1]).replaceAll("-", ""))) {
-				manifest.put(k, v);
-			}
+		this.vertx.eventBus().send("portal", new JsonObject().put("action","getI18n").put("acceptLanguage",locale), json -> {
+			JsonObject i18n = (JsonObject)(json.result().body());
+			versionMap.forEach((k, v) -> {
+				String[] s = k.split("\\.");
+				// Removing of "-" for scrapbook
+				String app = (s[s.length - 1]).replaceAll("-", "");
+				if (expectedExport.contains(app)) {
+					String i = i18n.getString(app);
+					manifest.put(k, new JsonObject().put("version",v)
+							.put("folder", StringUtils.stripAccents(i == null ? app : i)));
+				}
+			});
+			String path = exportDirectory + File.separator + "Manifest.json";
+			fs.writeFile(path, Buffer.factory.buffer(manifest.encodePrettily()), handler);
 		});
-		String path = exportDirectory + File.separator + "Manifest.json";
-		fs.writeFile(path, Buffer.factory.buffer(manifest.encodePrettily()), handler);
 	}
 
 	private String getUserId(String exportId) {
@@ -404,6 +450,12 @@ public class FileSystemExportService implements ExportService {
 				}
 			}
 		});
+	}
+
+	@Override
+	public String getExportBusAddress(String exportId)
+	{
+		return "export." + exportId;
 	}
 
 }

@@ -102,12 +102,19 @@ public class Validator {
 	}
 
 	public String validate(JsonObject object, String acceptLanguage) {
+		return validate(object, acceptLanguage, false, null);
+	}
+	// errorsContext param is usefull to pass (by reference) all informations to render an acurate report for CSV feeding
+	public String validate(JsonObject object, String acceptLanguage, boolean conserveChildAttributes, JsonArray errorsContext) {
 		if (object == null) {
 			return i18n.translate("null.object", I18n.DEFAULT_DOMAIN, acceptLanguage);
 		}
 		final StringBuilder calcChecksum = new StringBuilder();
 		final Set<String> attributes = new HashSet<>(object.fieldNames());
 		for (String attr : attributes) {
+			if (conserveChildAttributes && attr != null && attr.startsWith("child")) {
+				continue;
+			}
 			JsonObject v = validate.getJsonObject(attr);
 			if (v == null) {
 				object.remove(attr);
@@ -118,7 +125,7 @@ public class Validator {
 				String err;
 				switch (type) {
 					case "string" :
-						err = validString(attr, value, validator, acceptLanguage);
+						err = validString(attr, value, validator, acceptLanguage, errorsContext);
 						break;
 					case "array-string" :
 						err = validStringArray(attr, value, validator, acceptLanguage);
@@ -127,17 +134,27 @@ public class Validator {
 						err = validBoolean(attr, value, acceptLanguage);
 						break;
 					case "login-alias" :
-						err = validLoginAlias(attr, value, validator, acceptLanguage);
+						if (conserveChildAttributes) {
+							err = null;
+						} else {
+							err = validLoginAlias(attr, value, validator, acceptLanguage);
+						}
 						break;
 					default:
 						err = i18n.translate("missing.type.validator", I18n.DEFAULT_DOMAIN, acceptLanguage, type);
 				}
+				if (errorsContext != null && errorsContext.size() > 0) {
+					continue;
+				}
 				if (err != null) {
 					if (required.contains(attr)) {
 						return err;
-					} else {
+					}
+					if (!"ignore".equals(err)) {
 						log.info(err);
-						object.remove(attr);
+					}
+					if (errorsContext == null) {
+						object.remove(attr); // Remove if value is invalid except during CSV feeding.
 						continue;
 					}
 				}
@@ -157,7 +174,14 @@ public class Validator {
 			return e.getMessage();
 		}
 		generate(object);
-		return required(object, acceptLanguage);
+		String err = required(object, acceptLanguage, errorsContext);
+		// TODO : Merge error (return of Validator.validate()) and errorContext
+		if (errorsContext != null && errorsContext.size() > 0) {
+			return errorsContext.getJsonObject(0).getString("reason");
+		}
+		else {
+			return err;
+		}
 	}
 
 	public String modifiableValidate(JsonObject object) {
@@ -252,17 +276,26 @@ public class Validator {
 	}
 
 	private String required(JsonObject object) {
-		return required(object, "fr");
+		return required(object, "fr", null);
 	}
 
-	private String required(JsonObject object, String acceptLanguage) {
+	private String required(JsonObject object, String acceptLanguage, JsonArray errorsContext) {
 		Map<String, Object> m = object.getMap();
+		String res = null;
 		for (Object o : required) {
 			if (!m.containsKey(o.toString())) {
-				return i18n.translate("missing.attribute", I18n.DEFAULT_DOMAIN, acceptLanguage, i18n.translate(o.toString(), I18n.DEFAULT_DOMAIN, acceptLanguage));
+				if (errorsContext != null && !generate.containsKey(o.toString())) {
+					errorsContext.add(new JsonObject()
+							.put("reason", "missing.attribute")
+							.put("attribute", o.toString())
+							.put("errorLevel", "hard")
+					);
+				}
+				res = i18n.translate("missing.attribute", I18n.DEFAULT_DOMAIN, acceptLanguage,
+						"", i18n.translate(o.toString(), I18n.DEFAULT_DOMAIN, acceptLanguage));
 			}
 		}
-		return null;
+		return res;
 	}
 
 	private void generate(JsonObject object) {
@@ -417,7 +450,8 @@ public class Validator {
 			return i18n.translate("null.array.validator", I18n.DEFAULT_DOMAIN, acceptLanguage);
 		}
 		if (!(value instanceof JsonArray)) {
-			return i18n.translate("invalid.array.type", I18n.DEFAULT_DOMAIN, acceptLanguage, attr, value.getClass().getSimpleName());
+			return i18n.translate("invalid.array.type", I18n.DEFAULT_DOMAIN, acceptLanguage, attr,
+					value != null ? value.getClass().getSimpleName() : "null");
 		}
 		String err = null;
 		switch (validator) {
@@ -435,10 +469,10 @@ public class Validator {
 	}
 
 	private String validString(String attr, Object value, String validator) {
-		return validString(attr, value, validator, "fr");
+		return validString(attr, value, validator, "fr", null);
 	}
 
-	private String validString(String attr, Object value, String validator, String acceptLanguage) {
+	private String validString(String attr, Object value, String validator, String acceptLanguage, JsonArray errorsContext) {
 		Pattern p = patterns.get(validator);
 		if (p == null) {
 			if ("nop".equals(validator)) {
@@ -465,7 +499,18 @@ public class Validator {
 			}
 			return null;
 		} else {
-			return i18n.translate("invalid.value", I18n.DEFAULT_DOMAIN, acceptLanguage, attr, (value != null ? value.toString() : "null"));
+			if ("notEmpty".equals(validator)) {
+				return "ignore";
+			} else {
+				if (errorsContext != null) {
+					errorsContext.add(new JsonObject()
+							.put("reason", "invalid.value")
+							.put("attribute", attr)
+							.put("value", (value != null ? value.toString() : "null"))
+					);
+				}
+				return i18n.translate("invalid.value", I18n.DEFAULT_DOMAIN, acceptLanguage, attr, (value != null ? value.toString() : "null"));
+			}
 		}
 	}
 

@@ -433,3 +433,8 @@ i.system {
   @include fonticon;
   &::before {content: "\e854"}
 }
+
+i.dashboard {
+  @include fonticon;
+  &::before {content: "\e94b"}
+}

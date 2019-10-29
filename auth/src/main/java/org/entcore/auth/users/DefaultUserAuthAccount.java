@@ -32,6 +32,7 @@ import org.entcore.auth.pojo.SendPasswordDestination;
 import io.vertx.core.shareddata.LocalMap;
 import org.entcore.common.email.EmailFactory;
 import org.entcore.common.neo4j.Neo4j;
+import org.entcore.common.neo4j.StatementsBuilder;
 import org.joda.time.DateTime;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -87,19 +88,25 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 	}
 
 	@Override
+	public void activateAccountWithRevalidateTerms(final String login, String activationCode, final String password,
+								String email, String phone, final String theme, final HttpServerRequest request, final Handler<Either<String, String>> handler) {
+		activateAccount("login", login, activationCode, password, email, phone, theme, true, request, handler);
+	}
+
+	@Override
 	public void activateAccount(final String login, String activationCode, final String password,
 			String email, String phone, final String theme, final HttpServerRequest request, final Handler<Either<String, String>> handler) {
-		activateAccount("login", login, activationCode, password, email, phone, theme, request, handler);
+		activateAccount("login", login, activationCode, password, email, phone, theme, false, request, handler);
 	}
 
 	@Override
 	public void activateAccountByLoginAlias(final String login, String activationCode, final String password,
 		String email, String phone, final String theme, final HttpServerRequest request, final Handler<Either<String, String>> handler) {
-		activateAccount("loginAlias", login, activationCode, password, email, phone, theme, request, handler);
+		activateAccount("loginAlias", login, activationCode, password, email, phone, theme, false, request, handler);
 	}
 
 	private void activateAccount(final String loginFieldName, final String login, String activationCode, final String password,
-	 	String email, String phone, final String theme, final HttpServerRequest request, final Handler<Either<String, String>> handler) {
+	 	String email, String phone, final String theme, final Boolean needRevalidateTerms, final HttpServerRequest request, final Handler<Either<String, String>> handler) {
 		String query =
 				"MATCH (n:User) " +
 				"WHERE n." + loginFieldName + "={login} AND n.activationCode = {activationCode} AND n.password IS NULL " +
@@ -111,7 +118,7 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 				"WITH n, LENGTH(FILTER(x IN COLLECT(distinct r.score) WHERE x > 3)) as duplicates, p.blocked as blockedProfile " +
 				"WHERE (blockedProfile IS NULL OR blockedProfile = false) " +
 				"FOREACH (duplicate IN CASE duplicates WHEN 0 THEN [1] ELSE [] END | " +
-				"SET n.password = {password}, n.activationCode = null, n.email = {email}, n.mobile = {phone}) " +
+				"SET n.password = {password}, n.activationCode = null, n.email = {email}, n.mobile = {phone}, n.needRevalidateTerms = {needRevalidateTerms})  " +
 				"RETURN n.password as password, n.id as id, HEAD(n.profiles) as profile, duplicates > 0 as hasDuplicate ";
 		Map<String, Object> params = new HashMap<>();
 		params.put("login", login);
@@ -120,6 +127,7 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 		params.put("email", email);
 		params.put("phone", phone);
 		params.put("allowActivateDuplicate", allowActivateDuplicateProfiles);
+		params.put("needRevalidateTerms", needRevalidateTerms);
 		neo.send(query, params, new Handler<Message<JsonObject>>(){
 
 			@Override
@@ -271,7 +279,8 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 		String query = "MATCH (u:User)-[:IN]->(sg:Group)-[:DEPENDS]->(s:Structure) WHERE u.emailSearchField = {mail} " +
 				(setFirstname ? " AND u.firstNameSearchField = {firstName}" : "") +
 				(setStructure ? " AND s.id = {structure}" : "") +
-				" AND u.activationCode IS NULL RETURN DISTINCT u.login as login, u.mobile as mobile, s.name as structureName, s.id as structureId";
+				//" AND u.activationCode IS NULL RETURN DISTINCT u.login as login, u.mobile as mobile, s.name as structureName, s.id as structureId";
+				" RETURN DISTINCT u.login as login, u.activationCode as activationCode, u.mobile as mobile, s.name as structureName, s.id as structureId";
 		//Feat #20790 match only lowercases values
 		JsonObject params = new JsonObject().put("mail", email.toLowerCase());
 		if(setFirstname)
@@ -286,7 +295,8 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 		boolean setResetCode = resetCode != null && !resetCode.trim().isEmpty();
 
 		final String baseQuery =
-				"WHERE n.activationCode IS NULL " +
+				//"WHERE n.activationCode IS NULL " +
+				"WHERE 1=1 " +
 				(checkFederatedLogin ? "AND (NOT(HAS(n.federated)) OR n.federated = false) " : "") +
 				(setResetCode ? "SET n.resetCode = {resetCode}, n.resetDate = {today} " : "") +
 				"RETURN n.email as email, n.mobile as mobile";
@@ -325,7 +335,8 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 					"<-[:DEPENDS]-(tg:ProfileGroup)<-[:IN]-(p:User), " +
 					"sg-[:DEPENDS]->(psg:ProfileGroup)-[:HAS_PROFILE]->(sp:Profile {name:'Student'}), " +
 					"tg-[:DEPENDS]->(ptg:ProfileGroup)-[:HAS_PROFILE]->(tp:Profile {name:'Teacher'}) " +
-					"WHERE NOT(p.email IS NULL) AND n.activationCode IS NULL AND " +
+					//"WHERE NOT(p.email IS NULL) AND n.activationCode IS NULL AND " +
+					"WHERE NOT(p.email IS NULL) AND " +
 					"(NOT(HAS(n.federated)) OR n.federated = false) " +
 					(setResetCode ? "SET n.resetCode = {resetCode}, n.resetDate = {today} " : "") +
 					"RETURN p.email as email";
@@ -547,6 +558,34 @@ public class DefaultUserAuthAccount implements UserAuthAccount {
 	@Override
 	public void generateResetCode(String login, boolean checkFederatedLogin, Handler<Either<String, String>> handler) {
 		setResetCode(login, checkFederatedLogin, handler);
+	}
+
+	@Override
+	public void massGenerateResetCode(JsonArray userIds, boolean checkFederatedLogin , Handler<Either<String, JsonObject>> handler) {
+
+		final JsonObject resetCodes = new JsonObject();
+		final Long today = new Date().getTime();
+		final Map<String, String> map = new HashMap<>();
+
+		for (int i = 0; i < userIds.size(); i++) {
+			final String userId = userIds.getString(i);
+			final String code = StringValidation.generateRandomCode(8);
+			map.put(userId, code);
+			resetCodes.put(userId, new JsonObject().put("code", code).put("date", today));
+		}
+
+		String query = "WITH {codes} AS data, [k in keys({codes})] AS userIds " +
+				"MATCH (n:User) WHERE n.id IN userIds " +
+				"SET n.resetCode = data[n.id], n.resetDate = {today}";
+		JsonObject params = new JsonObject().put("codes", map).put("today", today);
+
+		neo.execute(query, params, res -> {
+			if ("ok".equals(res.body().getString("status"))) {
+				handler.handle(new Either.Right<>(resetCodes));
+			} else {
+				handler.handle(new Either.Left<>(res.body().getString("message")));
+			}
+		});
 	}
 
 	@Override

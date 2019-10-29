@@ -38,13 +38,12 @@ import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLDecoder;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import static fr.wseduc.webutils.Utils.defaultValidationParamsNull;
 import static org.entcore.common.neo4j.Neo4jResult.*;
@@ -160,6 +159,37 @@ public class DefaultAppRegistryService implements AppRegistryService {
 				"ORDER BY name ASC ";
 		neo.execute(query, params, validResultHandler(handler));
 	}
+
+	@Override
+	public void listApplicationsWithRoles(String structureId, Handler<Either<String, JsonArray>> handler) {
+		String filter = "";
+		JsonObject params = null;
+		if (structureId != null && !structureId.trim().isEmpty()) {
+			filter = "WHERE NOT(HAS(app.structureId)) OR app.structureId = {structure} ";
+			params = new JsonObject().put("structure", structureId);
+		}
+		String query = "MATCH (app:Application) " +
+                "OPTIONAL MATCH (app)-[:PROVIDE]->(:Action)<-[:AUTHORIZE]-(r:Role) " +
+				filter +
+				"RETURN app.id as id, app.displayName as displayName, app.name as name, app.icon as icon, " +
+				"'External' IN labels(app) as isExternal, app.levelsOfEducation as levelsOfEducation, app.appType as appType, " +
+				"CASE WHEN r IS NOT NULL THEN COLLECT(DISTINCT {id: r.id, name: r.name, distributions: r.distributions}) ELSE [] END as roles";
+		neo.execute(query, params, result -> {
+			Either<String, JsonArray> resultAsArray = validResult(result);
+			if(resultAsArray.isRight()) {
+				JsonArray applications = resultAsArray
+						.right()
+						.getValue()
+						.stream()
+						.map(JsonObject.class::cast)
+						.map(app -> app.put("levelsOfEducation", app.getJsonArray("levelsOfEducation", defaultLevelsOfEducation))						)
+						.collect(Collector.of(JsonArray::new, JsonArray::add, JsonArray::add));
+				resultAsArray = new Either.Right<>(applications);
+			}
+			handler.handle(resultAsArray);
+		});
+	}
+
 
 	@Override
 	public void listApplicationsWithActions(String structureId, String actionType,
@@ -620,32 +650,182 @@ public class DefaultAppRegistryService implements AppRegistryService {
 
 	@Override
 	public void massAuthorize(String structureId, List<String> profiles, List<String> rolesId, Handler<Either<String, JsonObject>> handler) {
-		String query =
-				"MATCH (r:Role), " +
-						"(parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile) " +
+		String query = "";
+		if (profiles.contains("AdminLocal")) {
+			profiles = profiles.stream()
+					.filter(profile -> !"AdminLocal".equals(profile))
+					.collect(Collectors.toList());
+			if (profiles.size() == 0) {
+				// Only ADML
+				query = "MATCH (r:Role), (parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(fg:FunctionGroup) " +
+						"WHERE r.id IN {roleIds} AND fg.name ENDS WITH 'AdminLocal' AND NOT(fg-[:AUTHORIZED]->r) " +
+						"CREATE UNIQUE (fg)-[:AUTHORIZED]->(r)";
+			} else {
+				// Profiles + ADML
+				query = "MATCH (r:Role), (parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure) " +
 						"WHERE r.id IN {roleIds} " +
-						"AND p.name IN {profiles} AND NOT(g-[:AUTHORIZED]->r) " +
-						"CREATE UNIQUE g-[:AUTHORIZED]->r";
+						"WITH s, r " +
+						"OPTIONAL MATCH (s)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile) " +
+						"WHERE p.name IN {profiles} AND NOT(g-[:AUTHORIZED]->r) " +
+						"MERGE (g)-[:AUTHORIZED]->(r) " +
+						"WITH s, r " +
+						"OPTIONAL MATCH (s)<-[:DEPENDS]-(fg:FunctionGroup) " +
+						"WHERE fg.name ENDS WITH 'AdminLocal' AND NOT(fg-[:AUTHORIZED]->r) " +
+						"MERGE (fg)-[:AUTHORIZED]->(r)";
+			}
+		} else {
+			// only Profiles (no ADML)
+			query = "MATCH (r:Role), (parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile) " +
+					"WHERE r.id IN {roleIds} AND p.name IN {profiles} AND NOT(g-[:AUTHORIZED]->r) " +
+					"CREATE UNIQUE (g)-[:AUTHORIZED]->(r) ";
+		}
 		executeQueryForStructureProfilesAndRoles(query, structureId, profiles, rolesId, handler);
 	}
 
 	@Override
 	public void massUnauthorize(String structureId, List<String> profiles, List<String> rolesId, Handler<Either<String, JsonObject>> handler) {
-		String query =
-				"MATCH (r:Role), " +
-						"(parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile) " +
+		String query = "";
+		if (profiles.contains("AdminLocal")) {
+			profiles = profiles.stream()
+					.filter(profile -> !"AdminLocal".equals(profile))
+					.collect(Collectors.toList());
+			if (profiles.size() == 0) {
+				// Only ADML
+				query = "MATCH (r:Role), (parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(fg:FunctionGroup) " +
 						"WHERE r.id IN {roleIds} " +
-						"AND p.name IN {profiles} " +
-						"MATCH r<-[auth:AUTHORIZED]-g " +
+						"AND fg.name ENDS WITH 'AdminLocal' " +
+						"MATCH (fg)-[auth:AUTHORIZED]->(r) " +
 						"DELETE auth";
+			}
+			else {
+				// Profiles + ADML
+				query = "MATCH (r:Role), (parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure) " +
+						"WHERE r.id IN {roleIds} " +
+						"WITH s, r " +
+						"OPTIONAL MATCH (s)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile), (g)-[auth:AUTHORIZED]->(r)" +
+						"WHERE p.name IN {profiles} " +
+						"DELETE auth " +
+						"WITH s, r " +
+						"OPTIONAL MATCH (s)<-[:DEPENDS]-(fg:FunctionGroup), (fg)-[auth:AUTHORIZED]->(r) " +
+						"WHERE fg.name ENDS WITH 'AdminLocal' " +
+						"DELETE auth";
+			}
+		} else {
+			// only Profiles (no ADML)
+			query = "MATCH (r:Role), " +
+					"(parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile), " +
+					"(r)<-[auth:AUTHORIZED]-(g) " +
+					"WHERE r.id IN {roleIds} AND p.name IN {profiles} " +
+					"DELETE auth";
+		}
 		executeQueryForStructureProfilesAndRoles(query, structureId, profiles, rolesId, handler);
 	}
 
 	private void executeQueryForStructureProfilesAndRoles(String query, String structureId, List<String> profiles, List<String> rolesId, Handler<Either<String, JsonObject>> handler) {
-		JsonObject params = new JsonObject()
-				.put("structureId", structureId)
-				.put("profiles", new fr.wseduc.webutils.collections.JsonArray(profiles))
-				.put("roleIds", new fr.wseduc.webutils.collections.JsonArray(rolesId));
+		JsonObject params = new JsonObject();
+		params.put("structureId", structureId);
+		if(profiles != null && profiles.size() > 0) {
+				params.put("profiles", new fr.wseduc.webutils.collections.JsonArray(profiles));
+		}
+		params.put("roleIds", new fr.wseduc.webutils.collections.JsonArray(rolesId));
 		neo.execute(query, params, validEmptyHandler(handler));
+	}
+
+	@Override
+	public void massAuthorization(JsonArray data, Handler<Either<String, JsonObject>> handler) {
+
+		String matchRole =
+				"MATCH (r:Role {id: {roleId}}), ";
+
+		String matchWidget =
+				"MATCH (r:Widget {id: {widgetId}}), ";
+
+		String matchProfilesGroup =
+				"(parentStructure:Structure {id: {structureId}})<-[:HAS_ATTACHMENT*0..]-(s:Structure)<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile) " +
+						"WHERE p.name IN {profiles} ";
+
+		String matchAdminGroup =
+				"(s:Structure {id: {structureId}})<-[:DEPENDS]-(g:Group) " +
+						"WHERE g.externalId =~ '.*ADMIN_LOCAL'";
+
+		String authorize =
+						"AND NOT(g-[:AUTHORIZED]->r) " +
+						"CREATE UNIQUE g-[:AUTHORIZED]->r";
+
+		String unauthorize =
+						"MATCH r<-[a:AUTHORIZED]-g " +
+						"DELETE a";
+
+
+		StatementsBuilder s = new StatementsBuilder();
+
+		data.forEach(entry -> {
+
+			JsonObject jo  = (JsonObject)entry;
+
+			JsonArray profilesAuthorized = new JsonArray();
+			JsonArray profilesUnauthorized = new JsonArray();
+
+			if (jo.getBoolean("Teacher")) profilesAuthorized.add("Teacher");
+			else profilesUnauthorized.add("Teacher");
+			if (jo.getBoolean("Student")) profilesAuthorized.add("Student");
+			else profilesUnauthorized.add("Student");
+			if (jo.getBoolean("Relative")) profilesAuthorized.add("Relative");
+			else profilesUnauthorized.add("Relative");
+			if (jo.getBoolean("Personnel")) profilesAuthorized.add("Personnel");
+			else profilesUnauthorized.add("Personnel");
+			if (jo.getBoolean("Guest")) profilesAuthorized.add("Guest");
+			else profilesUnauthorized.add("Guest");
+
+			String structureId = jo.getString("ent_structure_id");
+			String roleId = jo.getString("ent_role_id");
+			String widgetId = jo.getString("ent_widget_id");
+
+			JsonObject paramsAuthorized = new JsonObject().put("roleId", roleId)
+					.put("structureId", structureId).put("profiles", profilesAuthorized);
+			JsonObject paramsUnauthorized = new JsonObject().put("roleId", roleId)
+					.put("structureId", structureId).put("profiles", profilesUnauthorized);
+
+			String authorizeQuery = "";
+			String unauthorizeQuery = "";
+
+			JsonObject paramsAdmin = new JsonObject().put("structureId", structureId);
+
+			if (roleId != null) {
+				authorizeQuery += matchRole + matchProfilesGroup + authorize;
+				unauthorizeQuery += matchRole + matchProfilesGroup + unauthorize;
+				paramsAuthorized.put("roleId", roleId);
+				paramsUnauthorized.put("roleId", roleId);
+			} else if (widgetId != null) {
+				authorizeQuery += matchWidget + matchProfilesGroup + authorize;
+				unauthorizeQuery += matchWidget + matchProfilesGroup + unauthorize;
+				paramsAuthorized.put("widgetId", widgetId);
+				paramsUnauthorized.put("widgetId", widgetId);
+			}
+
+			s.add(authorizeQuery, paramsAuthorized);
+			s.add(unauthorizeQuery, paramsUnauthorized);
+
+			if (jo.getBoolean("AdminLocal")) {
+				if (roleId != null) {
+					paramsAdmin.put("roleId", roleId);
+					s.add(matchRole + matchAdminGroup + authorize, paramsAdmin);
+				}
+				if (widgetId != null) {
+					paramsAdmin.put("widgetId", widgetId);
+					s.add(matchWidget + matchAdminGroup + authorize, paramsAdmin);
+				}
+			} else {
+				if (roleId != null) {
+					paramsAdmin.put("roleId", roleId);
+					s.add(matchRole + matchAdminGroup + unauthorize, paramsAdmin);
+				}
+				if (widgetId != null) {
+					paramsAdmin.put("widgetId", widgetId);
+					s.add(matchWidget + matchAdminGroup + unauthorize, paramsAdmin);
+				}
+			}
+		});
+		neo.executeTransaction(s.build(), null, true, validEmptyHandler(handler));
 	}
 }

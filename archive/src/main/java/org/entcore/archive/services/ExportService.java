@@ -27,9 +27,11 @@ import io.vertx.core.http.HttpServerRequest;
 
 public interface ExportService {
 
-	void export(UserInfos user, String locale, JsonArray apps, HttpServerRequest request, Handler<Either<String, String>> handler);
+	void export(UserInfos user, String locale, JsonArray apps, JsonArray resourcesIds, HttpServerRequest request, Handler<Either<String, String>> handler);
 
 	void userExportExists(UserInfos user, Handler<Boolean> handler);
+
+	void userExportId(UserInfos user, Handler<String> handler);
 
 	boolean userExportExists(String exportId);
 
@@ -44,5 +46,7 @@ public interface ExportService {
 	void setDownloadInProgress(String exportId);
 
 	boolean downloadIsInProgress(String exportId);
+
+	String getExportBusAddress(String exportId);
 
 }

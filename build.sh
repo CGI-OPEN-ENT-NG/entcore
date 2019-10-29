@@ -42,19 +42,23 @@ clean () {
 }
 
 buildNode () {
-  #jenkins
+  #try jenkins branch name => then local git branch name => then jenkins params
   echo "[buildNode] Get branch name from jenkins env..."
   BRANCH_NAME=`echo $GIT_BRANCH | sed -e "s|origin/||g"`
   if [ "$BRANCH_NAME" = "" ]; then
     echo "[buildNode] Get branch name from git..."
     BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
   fi
+  if [ ! -z "$FRONT_TAG" ]; then
+    echo "[buildNode] Get tag name from jenkins param... $FRONT_TAG"
+    BRANCH_NAME="$FRONT_TAG"
+  fi
   if [ "$BRANCH_NAME" = "" ]; then
     echo "[buildNode] Branch name should not be empty!"
     exit -1
   fi
 
-  if [ "$BRANCH_NAME" = 'master' ]; then
+  if [ "$BRANCH_NAME" = 'master' ] || [ "$BRANCH_NAME" = 'v3.6.1.x' ]; then
       echo "[buildNode] Use entcore version from package.json ($BRANCH_NAME)"
       case `uname -s` in
         MINGW*)
@@ -108,41 +112,57 @@ adminV2GradleInstall () {
 }
 
 adminV2NodeClean () {
-  echo "[buildNode] Get branch name from git..."
-  BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+  echo "[buildNode] Get branch name from GIT_BRANCH var..."
+  BRANCH_NAME=`echo $GIT_BRANCH | sed -e "s|origin/||g"`
   if [ "$BRANCH_NAME" = "" ]; then
-    echo "[buildNode] Branch name should not be empty!"
-    exit -1
+    echo "[buildNode] Get branch name from git branch..."
+    BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+    if [ "$BRANCH_NAME" = "" ]; then
+      echo "[buildNode] Branch name should not be empty!"
+      exit -1
+    fi
   fi
   docker-compose run --rm -u "$USER_UID:$GROUP_GID" node sh -c "npm install && npm rm --no-save entcore && npm install --no-save entcore@$BRANCH_NAME && node_modules/gulp/bin/gulp.js adminV2-clean"
 }
 
 adminV2NodeBuildDev () {
-  echo "[buildNode] Get branch name from git..."
-  BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+  echo "[buildNode] Get branch name from GIT_BRANCH var..."
+  BRANCH_NAME=`echo $GIT_BRANCH | sed -e "s|origin/||g"`
   if [ "$BRANCH_NAME" = "" ]; then
-    echo "[buildNode] Branch name should not be empty!"
-    exit -1
+    echo "[buildNode] Get branch name from git branch..."
+    BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+    if [ "$BRANCH_NAME" = "" ]; then
+      echo "[buildNode] Branch name should not be empty!"
+      exit -1
+    fi
   fi
   docker-compose run --rm -u "$USER_UID:$GROUP_GID" node sh -c "npm install && npm rm --no-save entcore && npm install --no-save entcore@$BRANCH_NAME && node_modules/gulp/bin/gulp.js adminV2-build-dev"
 }
 
 adminV2NodeBuildProd () {
-  echo "[buildNode] Get branch name from git..."
-  BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+  echo "[buildNode] Get branch name from GIT_BRANCH var..."
+  BRANCH_NAME=`echo $GIT_BRANCH | sed -e "s|origin/||g"`
   if [ "$BRANCH_NAME" = "" ]; then
-    echo "[buildNode] Branch name should not be empty!"
-    exit -1
+    echo "[buildNode] Get branch name from git branch..."
+    BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+    if [ "$BRANCH_NAME" = "" ]; then
+      echo "[buildNode] Branch name should not be empty!"
+      exit -1
+    fi
   fi
   docker-compose run --rm -u "$USER_UID:$GROUP_GID" node sh -c "npm install && npm rm --no-save entcore && npm install --no-save entcore@$BRANCH_NAME && node_modules/gulp/bin/gulp.js adminV2-build"
 }
 
 adminV2NodeDevServer () {
-  echo "[buildNode] Get branch name from git..."
-  BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+  echo "[buildNode] Get branch name from GIT_BRANCH var..."
+  BRANCH_NAME=`echo $GIT_BRANCH | sed -e "s|origin/||g"`
   if [ "$BRANCH_NAME" = "" ]; then
-    echo "[buildNode] Branch name should not be empty!"
-    exit -1
+    echo "[buildNode] Get branch name from git branch..."
+    BRANCH_NAME=`git branch | sed -n -e "s/^\* \(.*\)/\1/p"`
+    if [ "$BRANCH_NAME" = "" ]; then
+      echo "[buildNode] Branch name should not be empty!"
+      exit -1
+    fi
   fi
   docker-compose run --rm -u "$USER_UID:$GROUP_GID" node sh -c "npm install && npm rm --no-save entcore && npm install --no-save entcore@$BRANCH_NAME && node_modules/gulp/bin/gulp.js adminV2-dev-server"
 }

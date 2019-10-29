@@ -76,7 +76,7 @@ export const directoryService = {
         return preferences;
     },
     //birthdate is YYYY-MM-DD
-    async saveUserForClass(classId: string, user: { lastName: string, firstName: string, type: UserTypes, birthDate: string, childrenIds?: string[] }) {
+    async saveUserForClass(classId: string, user: { lastName: string, firstName: string, type: UserTypes, birthDate: string, email: string, childrenIds?: string[] }) {
         const res = await http.post(`/directory/class/${classId}/user`, user);
         const resUser = new User({ ...user, ...res.data });
         return resUser;
@@ -321,6 +321,9 @@ export const directoryService = {
             return http.post('/auth/sendResetPassword', bodyFormData, { headers: { 'Content-Type': 'multipart/form-data' } });
         });
         return Promise.all(promises);
+    },
+    async generateResetCodes(users: User[]) {
+        return http.post("/auth/massGeneratePasswordRenewalCode", { users: users.map((user) => user.id) });
     },
     async getTheme() {
         const res = await http.get("/userbook/preference/theme");

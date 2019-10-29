@@ -82,7 +82,8 @@ public class ManualFeeder extends BusModBase {
 					"CREATE (s:Structure {props}) " +
 					"WITH s " +
 					"MATCH (p:Profile) " +
-					"CREATE p<-[:HAS_PROFILE]-(g:Group:ProfileGroup {name : s.name+'-'+p.name, displayNameSearchField: {groupSearchField}})-[:DEPENDS]->s " +
+					"CREATE p<-[:HAS_PROFILE]-(g:Group:ProfileGroup {name : s.name+'-'+p.name, " +
+					"displayNameSearchField: {groupSearchField}, filter: p.name})-[:DEPENDS]->s " +
 					"SET g.id = id(g)+'-'+timestamp() " +
 					"RETURN DISTINCT s.id as id ";
 			JsonObject params = new JsonObject()
@@ -116,7 +117,8 @@ public class ManualFeeder extends BusModBase {
 					"SET c.externalId = s.externalId + '$' + c.name " +
 					"WITH s, c " +
 					"MATCH s<-[:DEPENDS]-(g:ProfileGroup)-[:HAS_PROFILE]->(p:Profile) " +
-					"CREATE c<-[:DEPENDS]-(pg:Group:ProfileGroup {name : c.name+'-'+p.name, displayNameSearchField: {groupSearchField}})-[:DEPENDS]->g " +
+					"CREATE c<-[:DEPENDS]-(pg:Group:ProfileGroup {name : c.name+'-'+p.name, " +
+					"displayNameSearchField: {groupSearchField}, filter: p.name})-[:DEPENDS]->g " +
 					"SET pg.id = id(pg)+'-'+timestamp() " +
 					"RETURN DISTINCT c.id as id ";
 			JsonObject params = new JsonObject()
@@ -211,7 +213,7 @@ public class ManualFeeder extends BusModBase {
 					"WITH u " +
 					"MATCH (student:User) " +
 					"WHERE student.id IN {childrenIds} " +
-					"CREATE student-[:RELATED]->u " +
+					"CREATE student-[:RELATED {source: 'MANUAL'}]->u " +
 					"SET student.relative = coalesce(student.relative, []) + (u.externalId + '$10$1$1$0$0') ";
 			params.put("childrenIds", childrenIds);
 		}
@@ -456,7 +458,7 @@ public class ManualFeeder extends BusModBase {
 					"WITH u " +
 					"MATCH (student:User) " +
 					"WHERE student.id IN {childrenIds} " +
-					"CREATE student-[:RELATED]->u " +
+					"CREATE student-[:RELATED {source: 'MANUAL'}]->u " +
 					"SET student.relative = coalesce(student.relative, []) + (u.externalId + '$10$1$1$0$0') ";
 			params.put("childrenIds", childrenIds);
 		}
@@ -516,7 +518,8 @@ public class ManualFeeder extends BusModBase {
 							"WITH u, p " +
 							"MATCH (s:Class { id : {classId}})<-[:DEPENDS]-(cpg:ProfileGroup)-[:DEPENDS]->" +
 							"(pg:ProfileGroup)-[:HAS_PROFILE]->(p), (s)-[:BELONGS]->(struct:Structure) " +
-							"MERGE (pg)<-[:IN {source:'MANUAL'}]-(u)-[:IN {source:'MANUAL'}]->(cpg) " +
+							"MERGE pg<-[:IN {source:'MANUAL'}]-u " +
+							"MERGE cpg<-[:IN {source:'MANUAL'}]-u " +
 							"SET u.classes = CASE WHEN s.externalId IN u.classes THEN " +
 							"u.classes ELSE coalesce(u.classes, []) + s.externalId END, " +
 							"u.structures = CASE WHEN struct.externalId IN u.structures THEN " +
@@ -662,6 +665,7 @@ public class ManualFeeder extends BusModBase {
 							return;
 						}
 					}
+					user.put("checksum", "manual");
 					String query =
 							"MATCH (u:User { id : {userId}}) " +
 							"SET " + Neo4jUtils.nodeSetPropertiesFromJson("u", user) +

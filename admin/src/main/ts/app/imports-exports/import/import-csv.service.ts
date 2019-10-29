@@ -8,8 +8,10 @@ export class ImportCSVService {
         return this.buildPostFormData(importInfos, 'column/mapping');
     }
 
-    static async getClassesMapping(importInfos): Promise<any> {
-        return this.buildPostFormData(importInfos, 'classes/mapping');
+    static async getClassesMapping(importInfos, columnsMapping): Promise<any> {
+        let dataToPost = Object.assign({},importInfos);
+        dataToPost['columnsMapping'] = JSON.stringify(columnsMapping);
+        return this.buildPostFormData(dataToPost, 'classes/mapping');
     }
 
     static async validate(importInfos, columnsMapping, classesMapping): Promise<any> {
@@ -30,7 +32,7 @@ export class ImportCSVService {
             response = await http.post('directory/wizard/' + apiPath, 
                 formData, {'headers' : { 'Content-Type': 'multipart/form-data' }});
         } catch(error) {
-                return error.response.data;
+            return error.response.data;
         }
         return response.data;
     }
@@ -39,7 +41,17 @@ export class ImportCSVService {
         let response;
         let path = ['directory/wizard/update', importId, profile].join('/');
         try {
-            response = await http.put(path, data);
+            response = await http[action](path, data);
+        } catch(error) {
+            return error.response.data;
+        }
+        return response.data;
+    }
+
+    static async deleteLineReport(importId, profile, line): Promise<any> {
+        let response;
+        try {
+            response = await http.delete(['directory/wizard/update', importId, profile, line].join('/'));
         } catch(error) {
             return error.response.data;
         }
@@ -51,7 +63,10 @@ export class ImportCSVService {
         try {
             response = await http.put('directory/wizard/import/' + importId);
         } catch(error) {
-            return error.response.data;
+            if (error.response) {
+                return error.response.data;
+            }
+            throw error;
         }
         return response.data 
     }

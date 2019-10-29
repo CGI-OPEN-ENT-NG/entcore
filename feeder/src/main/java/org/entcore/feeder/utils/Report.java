@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import org.apache.commons.lang3.StringUtils;
 import org.entcore.common.email.EmailFactory;
 import org.entcore.common.http.request.JsonHttpServerRequest;
@@ -43,17 +44,24 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 
+import java.util.*;
+
+import static fr.wseduc.webutils.Utils.getOrElse;
+
 public class Report {
 
 	public static final Logger log = LoggerFactory.getLogger(Report.class);
 	public static final String FILES = "files";
 	public static final String PROFILES = "profiles";
+	private static final String MAPPINGS = "mappings";
+	public static final String KEYS_CLEANED = "keysCleaned";
 	public final JsonObject result;
 	private final I18n i18n = I18n.getInstance();
 	public final String acceptLanguage;
 	private long endTime;
 	private long startTime;
 	private Set<String> loadedFiles = new HashSet<>();
+	private boolean notReverseFilesOrder = false;
 
 	public enum State {
 		NEW, UPDATED, DELETED
@@ -64,7 +72,9 @@ public class Report {
 		final JsonObject errors = new JsonObject();
 		final JsonObject files = new JsonObject();
 		JsonObject ignored = new JsonObject();
-		result = new JsonObject().put("errors", errors).put("files", files).put("ignored", ignored);
+		result = new JsonObject().put("_id", UUID.randomUUID().toString()).put("created", MongoDb.now())
+				.put("errors", errors).put(FILES, files).put("ignored", ignored)
+				.put("source", getSource());
 	}
 
 	public Report addError(String error) {
@@ -105,27 +115,54 @@ public class Report {
 		log.error(error);
 	}
 
-	public void addSoftErrorByFile(String file, String key, String... errors) {
-		JsonObject softErrors = result.getJsonObject("softErrors");
+	public void addSoftErrorByFile(String file, String key, String lineNumber, String... errors) {
+    JsonObject softErrors = result.getJsonObject("softErrors");
 		if (softErrors == null) {
 			softErrors = new JsonObject();
 			result.put("softErrors", softErrors);
 		}
-		JsonArray f = softErrors.getJsonArray(file);
-		if (f == null) {
-			f = new fr.wseduc.webutils.collections.JsonArray();
-			softErrors.put(file, f);
+		JsonArray reasons = softErrors.getJsonArray("reasons");
+		if (reasons == null) {
+
+			reasons = new JsonArray();
+			softErrors.put("reasons", reasons);
 		}
-		String error = i18n.translate(key, I18n.DEFAULT_DOMAIN, acceptLanguage, errors);
-		f.add(error);
-		log.error(error);
+		if (!reasons.contains(key)) {
+			reasons.add(key);
+		}
+
+		JsonArray fileErrors = softErrors.getJsonArray(file);
+		if (fileErrors == null) {
+			fileErrors = new JsonArray();
+			softErrors.put(file, fileErrors);
+		}
+		JsonObject error = new JsonObject().copy()
+				.put("line",lineNumber)
+				.put("reason", key)
+				.put("attribute", errors.length > 0 ? errors[0] : "")
+				.put("value", errors.length > 1 ? errors[1] : "");
+		if (errors.length > 2 && errors[2] != null && errors[2].startsWith("nta-")) {
+			error.put("attribute", errors[2].replace("nta-", ""));
+		}
+		if (errors.length == 4 && "hard".equals(errors[3])) {
+			error.put("hardError", true);
+		}
+
+		List<String> errorContext = new ArrayList<>(Arrays.asList(errors)); // Hack to support "add" operation
+		errorContext.add(0, lineNumber);
+		String translation = i18n.translate(key, I18n.DEFAULT_DOMAIN, acceptLanguage, errorContext.toArray(new String[errorContext.size()]));
+		error.put("translation", translation);
+
+		fileErrors.add(error);
+		log.error(translation);
+		//String cleanKey = key.replace('.','-'); // Mongo don't support '.' characters in document field's name
 	}
 
 	public void addUser(String file, JsonObject props) {
-		JsonArray f = result.getJsonObject("files").getJsonArray(file);
+		JsonArray f = result.getJsonObject(FILES).getJsonArray(file);
 		if (f == null) {
 			f = new fr.wseduc.webutils.collections.JsonArray();
-			result.getJsonObject("files").put(file, f);
+			result.getJsonObject(FILES).put(file, f);
 		}
 		f.add(props);
 	}
@@ -153,7 +190,7 @@ public class Report {
 	}
 
 	public JsonObject getResult() {
-		return result;
+		return result.copy();
 	}
 
 	public void setUsersExternalId(JsonArray usersExternalIds) {
@@ -162,8 +199,8 @@ public class Report {
 
 	public JsonArray getUsersExternalId() {
 		final JsonArray res = new fr.wseduc.webutils.collections.JsonArray();
-		for (String f : result.getJsonObject("files").fieldNames()) {
-			JsonArray a = result.getJsonObject("files").getJsonArray(f);
+		for (String f : result.getJsonObject(FILES).fieldNames()) {
+			JsonArray a = result.getJsonObject(FILES).getJsonArray(f);
 			if (a != null) {
 				for (Object o : a) {
 					if (!(o instanceof JsonObject))
@@ -183,12 +220,26 @@ public class Report {
 	}
 
 	public void persist(Handler<Message<JsonObject>> handler) {
+		if (getOrElse(this.getResult().getBoolean("not-persist-report"), false)) {
+			return;
+		}
 		cleanKeys();
 		MongoDb.getInstance().save("imports", this.getResult(), handler);
 	}
 
-	protected void cleanKeys() {
+	public void updateErrors(Handler<Message<JsonObject>> handler) {
+		boolean cleaned = updateCleanKeys();
+		JsonObject modif = new JsonObject()
+				.put("errors", result.getJsonObject("errors"))
+				.put("softErrors", result.getJsonObject("softErrors"));
+		if (cleaned) {
+			modif.put(KEYS_CLEANED, true);
+		}
+		MongoDb.getInstance().update("imports", new JsonObject().put("_id", result.getString("_id")),
+				new JsonObject().put("$set", modif), handler);
 	}
+
+	protected void cleanKeys() {}
 
 	public void setEndTime(long endTime) {
 		this.endTime = endTime;
@@ -359,6 +410,87 @@ public class Report {
 				});
 			}
 		}
+	}
+
+	public void addMapping(String profile, JsonObject mappping) {
+		JsonObject mappings = result.getJsonObject(MAPPINGS);
+		if (mappings == null) {
+			mappings = new JsonObject();
+			result.put(MAPPINGS, mappings);
+		}
+		mappings.put(profile, mappping);
+	}
+
+	public JsonObject getMappings() {
+		return result.getJsonObject(MAPPINGS);
+	}
+
+	public void setMappings(JsonObject mappings) {
+		if (mappings != null && mappings.size() > 0) {
+			result.put(MAPPINGS, mappings);
+		}
+	}
+
+	protected boolean updateCleanKeys() { return false; }
+
+	protected int cleanAttributeKeys(JsonObject attribute) {
+		int count = 0;
+		if (attribute != null) {
+			for (String attr : attribute.copy().fieldNames()) {
+				Object j = attribute.getValue(attr);
+				if (j != null){
+					if (j instanceof JsonObject) {
+						JsonObject jo = (JsonObject)j;
+						for (String attr2 : jo.copy().fieldNames()) {
+							if (attr2.contains(".")) {
+								count++;
+								jo.put(attr2.replaceAll("\\.", "_|_"), (String) jo.remove(attr2));
+							}
+
+						}
+					} else if (j instanceof JsonArray && attr.contains(".")) {
+						attribute.put(attr.replaceAll("\\.", "_|_"), (JsonArray) j);
+						attribute.remove(attr);
+						count++;
+					}
+				}
+			}
+		}
+		return count;
+	}
+
+	protected void uncleanAttributeKeys(JsonObject attribute) {
+		if (attribute != null) {
+			for (String attr : attribute.fieldNames()) {
+				Object j = attribute.getValue(attr);
+				if (j != null) {
+					if (j instanceof JsonObject) {
+						JsonObject jo = (JsonObject)j;
+						for (String attr2 : jo.copy().fieldNames()) {
+							if (attr2.contains("_|_")) {
+								jo.put(attr2.replaceAll("_\\|_", "."), (String) jo.remove(attr2));
+							}
+						}
+					} else if (j instanceof JsonArray && attr.contains("_|_")) {
+						attribute.put(attr.replaceAll("_\\|_", "."), (JsonArray) j);
+						attribute.remove(attr);
+					}
+				}
+			}
+		}
+	}
+
+	public String getSource() {
+		return "REPORT";
+	}
+
+
+	public boolean isNotReverseFilesOrder() {
+		return notReverseFilesOrder;
+	}
+
+	public void setNotReverseFilesOrder(boolean notReverseFilesOrder) {
+		this.notReverseFilesOrder = notReverseFilesOrder;
 	}
 
 }

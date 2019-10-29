@@ -114,17 +114,17 @@ import { SelectOption } from '../../../../shared/ux/components/multi-select.comp
                     </div>
 
                     <form-field label="services.connector.cas.type">
-                        <mono-select [(ngModel)]="connector.casTypeId"
-                                     name="casTypeId"
-                                     [disabled]="!connector.hasCas || disabled"
-                                     class="is-flex-none has-min-width" [options]="casTypesOptions">
+                        <select [(ngModel)]="connector.casTypeId"
+                                name="casTypeId"
+                                [disabled]="!connector.hasCas || disabled"
+                                class="is-flex-none has-min-width">
                             <option *ngFor="let casType of casTypes" [value]="casType.id">
                                 {{ casType.name }}
                             </option>
-                        </mono-select>
+                        </select>
                     </form-field>
 
-                    <form-field label="services.connector.cas.pattern">
+                    <form-field label="services.connector.cas.pattern" *ngIf="admc">
                         <input type="text"
                                [(ngModel)]="connector.casPattern"
                                name="casPattern"
@@ -232,6 +232,8 @@ export class ConnectorPropertiesComponent implements OnChanges {
     creationMode: boolean;
     @Input()
     disabled: boolean;
+    @Input()
+    admc: boolean;
 
     @Output()
     create: EventEmitter<string> = new EventEmitter<string>();

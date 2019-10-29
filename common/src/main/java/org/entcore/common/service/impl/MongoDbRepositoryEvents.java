@@ -20,23 +20,45 @@
 package org.entcore.common.service.impl;
 
 import com.mongodb.QueryBuilder;
+import fr.wseduc.mongodb.MongoDb;
 import fr.wseduc.mongodb.MongoQueryBuilder;
 import fr.wseduc.mongodb.MongoUpdateBuilder;
 import org.entcore.common.mongodb.MongoDbConf;
+import org.entcore.common.share.impl.MongoDbShareService;
+import org.entcore.common.folders.impl.DocumentHelper;
+
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.file.FileSystem;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.file.FileProps;
+import io.vertx.core.Future;
+import io.vertx.core.CompositeFuture;
+
+import org.entcore.common.utils.FileUtils;
 import org.entcore.common.utils.StringUtils;
+import org.entcore.common.folders.FolderImporter;
+import org.entcore.common.folders.FolderImporter.FolderImporterContext;
 
 import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MongoDbRepositoryEvents extends AbstractRepositoryEvents {
 
@@ -44,6 +66,8 @@ public class MongoDbRepositoryEvents extends AbstractRepositoryEvents {
 	protected final String managerRight;
 	protected final String revisionsCollection;
 	protected final String revisionIdAttribute;
+	private final FolderImporter fileImporter;
+	protected final Map<String, String> collectionNameToImportPrefixMap = new LinkedHashMap<String, String>();
 
 	public MongoDbRepositoryEvents() {
 		this(null, null, null, null);
@@ -63,6 +87,7 @@ public class MongoDbRepositoryEvents extends AbstractRepositoryEvents {
 		this.managerRight = managerRight;
 		this.revisionsCollection = revisionsCollection;
 		this.revisionIdAttribute = revisionIdAttribute;
+		this.fileImporter = new FolderImporter(vertx.fileSystem(), vertx.eventBus());
 	}
 
 	@Override
@@ -229,51 +254,455 @@ public class MongoDbRepositoryEvents extends AbstractRepositoryEvents {
 		}
 	}
 
+	protected JsonObject revertExportChanges(JsonObject document, String importPrefix)
+	{
+		String title = DocumentHelper.getTitle(document);
+		String name = DocumentHelper.getName(document);
+
+		if(title != null && title.startsWith(importPrefix) == true)
+			DocumentHelper.setTitle(document, title.substring(importPrefix.length()));
+
+		if(name != null && name.startsWith(importPrefix) == true)
+			DocumentHelper.setName(document, name.substring(importPrefix.length()));
+
+		return document;
+	}
+
 	@Override
-	public void exportResources(String exportId, String userId, JsonArray g, String exportPath, String locale,
-			String host, Handler<Boolean> handler) {
+	public void exportResources(JsonArray resourcesIds, String exportId, String userId, JsonArray g, String exportPath, String locale,
+			String host, Handler<Boolean> handler)
+	{
 			QueryBuilder findByAuthor = QueryBuilder.start("author.userId").is(userId);
 			QueryBuilder findByOwner = QueryBuilder.start("owner.userId").is(userId);
 			QueryBuilder findByAuthorOrOwner = QueryBuilder.start().or(findByAuthor.get(), findByOwner.get());
-			QueryBuilder findByShared = QueryBuilder.start().or(QueryBuilder.start("shared.userId").is(userId).get(),
-					QueryBuilder.start("shared.groupId").in(g).get());
-			QueryBuilder findByAuthorOrOwnerOrShared = QueryBuilder.start().or(findByAuthorOrOwner.get(),
-					findByShared.get());
-			final JsonObject query = MongoQueryBuilder.build(findByAuthorOrOwnerOrShared);
+
+			QueryBuilder findByShared = QueryBuilder.start().or(
+				QueryBuilder.start("shared.userId").is(userId).get(),
+				QueryBuilder.start("shared.groupId").in(g).get()
+			);
+			QueryBuilder findByAuthorOrOwnerOrShared = QueryBuilder.start().or(
+				findByAuthorOrOwner.get(),
+				findByShared.get()
+			);
+
+			JsonObject query;
+
+			if(resourcesIds == null)
+				query = MongoQueryBuilder.build(findByAuthorOrOwnerOrShared);
+			else
+			{
+				QueryBuilder limitToResources = findByAuthorOrOwnerOrShared.and(
+					QueryBuilder.start("_id").in(resourcesIds).get()
+				);
+				query = MongoQueryBuilder.build(limitToResources);
+			}
+
 			final AtomicBoolean exported = new AtomicBoolean(false);
 			final String collection = MongoDbConf.getInstance().getCollection();
-			mongo.find(collection, query, new Handler<Message<JsonObject>>() {
+
+			mongo.find(collection, query, new Handler<Message<JsonObject>>()
+			{
 				@Override
-				public void handle(Message<JsonObject> event) {
+				public void handle(Message<JsonObject> event)
+				{
 					JsonArray results = event.body().getJsonArray("results");
-					if ("ok".equals(event.body().getString("status")) && results != null) {
-						createExportDirectory(exportPath, locale, new Handler<String>() {
+					if ("ok".equals(event.body().getString("status")) && results != null)
+					{
+						createExportDirectory(exportPath, locale, new Handler<String>()
+						{
 							@Override
-							public void handle(String path) {
-								if (path != null) {
-									exportDocumentsDependancies(results, path, new Handler<Boolean>() {
+							public void handle(String path)
+							{
+								if (path != null)
+								{
+									exportDocumentsDependancies(results, path, new Handler<Boolean>()
+									{
 										@Override
-										public void handle(Boolean bool) {
-											if (bool) {
+										public void handle(Boolean bool)
+										{
+											if (bool)
+											{
 												exportFiles(results, path, new HashSet<String>(), exported, handler);
-											} else {
+											}
+											else
+											{
 												// Should never happen, export doesn't fail if docs export fail.
 												handler.handle(exported.get());
 											}
 										}
 									});
-								} else {
+								}
+								else
+								{
 									handler.handle(exported.get());
 								}
 							}
 						});
-					} else {
+					}
+					else
+					{
 						log.error(title + " : Could not proceed query " + query.encode(),
 								event.body().getString("message"));
 						handler.handle(exported.get());
 					}
 				}
 			});
+	}
+
+	protected JsonObject sanitiseDocument(JsonObject document, String userId, String userName)
+	{
+		MongoDbCrudService.setUserMetadata(document, userId, userName);
+		MongoDbShareService.removeShareMetadata(document);
+
+		return document;
+	}
+
+	protected void readAllDocumentsFromDir(String dirPath, Handler<Map<String, JsonObject>> handler, String userId, String userName)
+	{
+		MongoDbRepositoryEvents self = this;
+		this.fs.readDir(dirPath, new Handler<AsyncResult<List<String>>>()
+		{
+			@Override
+			public void handle(AsyncResult<List<String>> result)
+			{
+				if(result.succeeded() == false)
+					throw new RuntimeException(result.cause());
+				else
+				{
+					List<String> filesInDir = result.result();
+					int nbFiles = filesInDir.size();
+
+					ArrayList<JsonObject> mongoDocs = new ArrayList<JsonObject>(nbFiles);
+					ArrayList<String> mongoDocsFileNames = new ArrayList<String>(nbFiles);
+					AtomicInteger unprocessed = new AtomicInteger(nbFiles);
+					AtomicInteger nbErrors = new AtomicInteger(0);
+
+					for(int i = 0; i < nbFiles; ++i)
+					{
+						mongoDocs.add(null);
+						mongoDocsFileNames.add(null);
+					}
+
+					List<FolderImporterContext> contexts = Collections.synchronizedList(new LinkedList<FolderImporterContext>());
+
+					Handler finaliseRead = new Handler<Void>()
+					{
+						@Override
+						public void handle(Void result)
+						{
+							for(FolderImporterContext importedCtx : contexts)
+								self.fileImporter.applyFileIdsChange(importedCtx, mongoDocs);
+
+							Map<String, JsonObject> fileMap = new HashMap<String, JsonObject>();
+							for(int i = mongoDocs.size(); i-- > 0;)
+								fileMap.put(mongoDocsFileNames.get(i), mongoDocs.get(i));
+
+							handler.handle(fileMap);
+						}
+					};
+
+					for(String filePath : filesInDir)
+					{
+						self.fs.props(filePath, new Handler<AsyncResult<FileProps>>()
+						{
+							@Override
+							public void handle(AsyncResult<FileProps> propsResult)
+							{
+								if(propsResult.succeeded() == false)
+									throw new RuntimeException(propsResult.cause());
+								else
+								{
+									if(propsResult.result().isDirectory() == true)
+									{
+										FolderImporterContext ctx = new FolderImporterContext(filePath, userId, userName);
+										self.fileImporter.importFoldersFlatFormat(ctx, new Handler<JsonObject>()
+										{
+											@Override
+											public void handle(JsonObject rapport)
+											{
+												int ix = unprocessed.decrementAndGet();
+
+												nbErrors.addAndGet(Integer.parseInt(rapport.getString("errorsNumber", "1")));
+												contexts.add(ctx);
+
+												if(ix == 0)
+													finaliseRead.handle(null);
+											}
+										});
+									}
+									else
+									{
+										self.fs.readFile(filePath, new Handler<AsyncResult<Buffer>>()
+										{
+											@Override
+											public void handle(AsyncResult<Buffer> fileResult)
+											{
+												if(fileResult.succeeded() == false)
+													throw new RuntimeException(fileResult.cause());
+												else
+												{
+													int ix = unprocessed.decrementAndGet();
+													mongoDocs.set(ix, self.sanitiseDocument(fileResult.result().toJsonObject(), userId, userName));
+													mongoDocsFileNames.set(ix, FileUtils.getFilename(filePath));
+
+													if(ix == 0)
+														finaliseRead.handle(null);
+												}
+											}
+										});
+									}
+								}
+							}
+						});
+					}
+				}
+			}
+		});
+	}
+
+	public static void importDocuments(String collection, List<JsonObject> documents, Handler<JsonObject> handler)
+	{
+		if(documents.size() == 0)
+		{
+			JsonObject rapport =
+						new JsonObject()
+							.put("rapport",
+								new JsonObject()
+								.put("resourcesNumber", Integer.toString(0))
+								.put("duplicatesNumber", Integer.toString(0))
+								.put("errorsNumber", Integer.toString(0))
+							)
+							.put("idsMap", new JsonObject());
+
+			handler.handle(rapport);
+			return;
+		}
+
+		MongoDb mongo =  MongoDb.getInstance();
+
+		JsonArray savePayload = new JsonArray();
+		JsonArray idsToImport = new JsonArray();
+		Map<String, Integer> idToIxMap = new HashMap<String, Integer>();
+		Map<String, String> oldIdsToNewIds = new HashMap<String, String>();
+
+		for(int i = 0, skipped = 0, l = documents.size(); i < l; ++i)
+		{
+			JsonObject d = documents.get(i);
+
+			if(d == null)
+			{
+				++skipped;
+				continue;
+			}
+
+			String docId = DocumentHelper.getId(d);
+
+			savePayload.add(d);
+			idsToImport.add(docId);
+			idToIxMap.put(docId, i - skipped);
+			oldIdsToNewIds.put(docId, docId);
+		}
+
+		QueryBuilder lookForExisting = QueryBuilder.start("_id").in(idsToImport);
+
+		mongo.find(collection, MongoQueryBuilder.build(lookForExisting), new Handler<Message<JsonObject>>()
+		{
+			@Override
+			public void handle(Message<JsonObject> searchMsg)
+			{
+				JsonObject body = searchMsg.body();
+
+				if(body.getString("status").equals("ok"))
+				{
+					JsonArray foundDocs = body.getJsonArray("results");
+					int nbDuplicates = 0;
+
+					for(int i = foundDocs.size(); i-- > 0;)
+					{
+						String foundId = DocumentHelper.getId(foundDocs.getJsonObject(i));
+
+						// Find already-existing resources
+						Integer mapIx = idToIxMap.get(foundId);
+						if(mapIx != null)
+						{
+							String newId = UUID.randomUUID().toString();
+							oldIdsToNewIds.put(foundId, newId);
+							// Create a duplicate
+							DocumentHelper.setId(savePayload.getJsonObject(mapIx), newId);
+							++nbDuplicates;
+						}
+					}
+
+					final int totalDuplicates = nbDuplicates;
+					mongo.insert(collection, savePayload, new Handler<Message<JsonObject>>()
+					{
+						@Override
+						public void handle(Message<JsonObject> saveMsg)
+						{
+							JsonObject body = saveMsg.body();
+							int nbErrors = -1;
+
+							if(body.getString("status").equals("ok"))
+								nbErrors = 0;
+							else
+							{
+								JsonObject mongoError = new JsonObject(body.getString("message"));
+
+								nbErrors = savePayload.size() - mongoError.getInteger("n");
+							}
+
+							Map<String, Object> convertedMap = new HashMap<String, Object>();
+							convertedMap.putAll(oldIdsToNewIds);
+
+							JsonObject rapport =
+								new JsonObject()
+									.put("rapport",
+										new JsonObject()
+										.put("resourcesNumber", Integer.toString(savePayload.size() - nbErrors))
+										.put("duplicatesNumber", Integer.toString(totalDuplicates))
+										.put("errorsNumber", Integer.toString(nbErrors))
+									)
+									.put("idsMap", new JsonObject(convertedMap));
+
+							handler.handle(rapport);
+						}
+					});
+				}
+				else
+				{
+					// If the find fails, don't import anything
+					JsonObject rapport =
+						new JsonObject()
+							.put("rapport",
+								new JsonObject()
+								.put("resourcesNumber", Integer.toString(0))
+								.put("duplicatesNumber", Integer.toString(0))
+								.put("errorsNumber", Integer.toString(savePayload.size()))
+							)
+							.put("idsMap", new JsonObject());
+
+					handler.handle(rapport);
+				}
+			}
+		});
+	}
+
+	@Override
+	public void importResources(String importId, String userId, String userName, String importPath,
+		String locale, Handler<JsonObject> handler)
+	{
+		MongoDbRepositoryEvents self = this;
+
+		this.readAllDocumentsFromDir(importPath, new Handler<Map<String, JsonObject>>()
+		{
+			@Override
+			public void handle(Map<String, JsonObject> docs)
+			{
+				Map<String, String> prefixMap = self.collectionNameToImportPrefixMap;
+
+				// Single collection case, aka the generic mongoDB apps
+				if(prefixMap.size() == 0)
+				{
+					prefixMap = new HashMap<String, String>();
+					prefixMap.put(MongoDbConf.getInstance().getCollection(), "");
+				}
+
+				List<Future> collFutures = new LinkedList<Future>();
+				List<Future> collFuturesChain = new LinkedList<Future>();
+				Map<String, String> previousCollectionsIdsMap = new HashMap<String, String>();
+
+				for(Map.Entry<String, String> prefix : prefixMap.entrySet())
+				{
+					ArrayList<JsonObject> collectionDocs = new ArrayList<JsonObject>(docs.size());
+
+					for(Map.Entry<String, JsonObject> entry : docs.entrySet())
+					{
+						if(entry == null || entry.getKey() == null || entry.getValue() == null)
+								continue;
+
+						if(entry.getKey().startsWith(prefix.getValue()) == true)
+							collectionDocs.add(self.revertExportChanges(entry.getValue(), prefix.getValue()));
+					}
+
+					if(collectionDocs.size() != 0)
+					{
+						Future<JsonObject> collDone = Future.future();
+						Future<JsonObject> collChain = Future.future();
+
+						Handler importNextCollection = new Handler<AsyncResult<JsonObject>>()
+						{
+							@Override
+							public void handle(AsyncResult<JsonObject> previousResult)
+							{
+								if(previousResult != null)
+								{
+									JsonObject previousIdsMap = previousResult.result().getJsonObject("idsMap");
+
+									for(String key : previousIdsMap.getMap().keySet())
+										previousCollectionsIdsMap.put(key, previousIdsMap.getString(key));
+
+									for(int i = collectionDocs.size(); i-- > 0;)
+										AbstractRepositoryEvents.applyIdsChange(collectionDocs.get(i), previousCollectionsIdsMap);
+								}
+
+								MongoDbRepositoryEvents.importDocuments(prefix.getKey(), collectionDocs, new Handler<JsonObject>()
+								{
+									@Override
+									public void handle(JsonObject result)
+									{
+										collChain.complete(result);
+										collDone.complete(result);
+									}
+								});
+							}
+						};
+
+						if(collFutures.size() == 0)
+							importNextCollection.handle(null);
+						else
+							collFuturesChain.get(collFuturesChain.size() - 1).setHandler(importNextCollection);
+
+						collFuturesChain.add(collChain);
+						collFutures.add(collDone);
+					}
+				}
+
+				// Fuse reports into a final one
+				CompositeFuture.join(collFutures).setHandler(new Handler<AsyncResult<CompositeFuture>>()
+				{
+					@Override
+					public void handle(AsyncResult<CompositeFuture> result)
+					{
+						if(result.succeeded() == true)
+						{
+							List<JsonObject> rapports = result.result().list();
+
+							int nbResources = 0;
+							int nbDuplicates = 0;
+							int nbErrors = 0;
+
+							for(JsonObject rapWrapper : rapports)
+							{
+								JsonObject rap = rapWrapper.getJsonObject("rapport");
+								nbResources += Integer.parseInt(rap.getString("resourcesNumber"));
+								nbDuplicates += Integer.parseInt(rap.getString("duplicatesNumber"));
+								nbErrors += Integer.parseInt(rap.getString("errorsNumber"));
+							}
+
+							JsonObject finalRapport =
+								new JsonObject()
+									.put("resourcesNumber", Integer.toString(nbResources))
+									.put("duplicatesNumber", Integer.toString(nbDuplicates))
+									.put("errorsNumber", Integer.toString(nbErrors));
+
+							handler.handle(finalRapport);
+						}
+						// Can't fail
+					}
+				});
+
+			};
+		}, userId, userName);
 	}
 
 }

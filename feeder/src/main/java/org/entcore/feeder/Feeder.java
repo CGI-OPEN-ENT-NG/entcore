@@ -49,13 +49,16 @@ import org.vertx.java.busmods.BusModBase;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static fr.wseduc.webutils.Utils.getOrElse;
+import static fr.wseduc.webutils.Utils.isEmpty;
 import static fr.wseduc.webutils.Utils.isNotEmpty;
 import static org.entcore.common.utils.Config.defaultDeleteUserDelay;
 import static org.entcore.common.utils.Config.defaultPreDeleteUserDelay;
+import static org.entcore.feeder.csv.CsvReport.MAPPINGS;
 
 public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 
@@ -75,6 +78,7 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 	}
 
 	private EDTUtils edtUtils;
+	private ValidatorFactory validatorFactory;
 
 	@Override
 	public void start() {
@@ -94,9 +98,10 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 		defaultFeed = config.getString("feeder", "AAF");
 		feeds.put("AAF", new AafFeeder(vertx, getFilesDirectory("AAF")));
 		feeds.put("AAF1D", new Aaf1dFeeder(vertx, getFilesDirectory("AAF1D")));
-		feeds.put("CSV", new CsvFeeder(vertx, config.getJsonObject("csvMappings", new JsonObject())));
+		feeds.put("CSV", new CsvFeeder(vertx));
 		final long deleteUserDelay = config.getLong("delete-user-delay", defaultDeleteUserDelay);
 		final long preDeleteUserDelay = config.getLong("pre-delete-user-delay", defaultPreDeleteUserDelay);
+
 		final String deleteCron = config.getString("delete-cron", "0 0 2 * * ? *");
 		final String preDeleteCron = config.getString("pre-delete-cron", "0 0 3 * * ? *");
 		final String importCron = config.getString("import-cron");
@@ -167,7 +172,8 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 				if (isNotEmpty(edtPath) && isNotEmpty(edtCron)) {
 					try {
 						new CronTrigger(vertx, edtCron).schedule(
-								new ImportsLauncher(vertx, edtPath, postImport, edtUtils, config.getBoolean("udt-user-creation", true)));
+								new ImportsLauncher(vertx, edtPath, postImport, edtUtils,
+										config.getBoolean("edt-user-creation", false)));
 					} catch (ParseException e) {
 						logger.error("Error in cron edt", e);
 					}
@@ -181,7 +187,8 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 			if (isNotEmpty(udtPath) && isNotEmpty(udtCron)) {
 				try {
 					new CronTrigger(vertx, udtCron).schedule(
-							new ImportsLauncher(vertx, udtPath, postImport, edtUtils, config.getBoolean("udt-user-creation", true)));
+							new ImportsLauncher(vertx, udtPath, postImport, edtUtils,
+									config.getBoolean("udt-user-creation", false)));
 				} catch (ParseException e) {
 					logger.error("Error in cron udt", e);
 				}
@@ -202,6 +209,7 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 			}
 		}
 		I18n.getInstance().init(vertx);
+		validatorFactory = new ValidatorFactory(vertx);
 	}
 
 	private String getFilesDirectory(String feeder) {
@@ -288,9 +296,17 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 				break;
 			case "import" : launchImport(message);
 				break;
+			case "importWithId" : importWithId(message);
+				break;
 			case "export" : launchExport(message);
 				break;
 			case "validate" : launchImportValidation(message, null);
+				break;
+			case "validateWithId" : validateWithId(message);
+				break;
+			case "columnsMapping" : csvColumnMapping(message);
+				break;
+			case "classesMapping" : csvClassesMapping(message);
 				break;
 			case "ignore-duplicate" :
 				duplicateUsers.ignoreDuplicate(message);
@@ -319,10 +335,12 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 				AbstractTimetableImporter.initStructure(eb, message);
 				break;
 			case "manual-edt":
-				EDTImporter.launchImport(edtUtils, config.getString("mode", "prod"), message, postImport);
+				EDTImporter.launchImport(edtUtils, config.getString("mode", "prod"), message, postImport,
+						config.getBoolean("edt-user-creation", false));
 				break;
 			case "manual-udt":
-				UDTImporter.launchImport(vertx, message, postImport, config.getBoolean("udt-user-creation", true));
+				UDTImporter.launchImport(vertx, message, postImport,
+						config.getBoolean("udt-user-creation", false));
 				break;
 			case "reinit-logins" :
 				Validator.initLogin(neo4j, vertx);
@@ -331,6 +349,95 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 				sendError(message, "invalid.action");
 		}
 		checkEventQueue();
+	}
+
+	private void csvClassesMapping(final Message<JsonObject> message) {
+		final CsvValidator v = new CsvValidator(vertx, message.body().getString("langage"),message.body());
+		String path = message.body().getString("path");
+		v.classesMapping(path, new Handler<JsonObject>() {
+			@Override
+			public void handle(JsonObject event) {
+				if (!v.containsErrors()) {
+					JsonObject result = new JsonObject().put("result", v.getResult());
+					result.getJsonObject("result").remove("errors");
+					sendOK(message, result);
+				} else {
+					sendError(message, "classes.mapping.error");
+				}
+			}
+		});
+	}
+
+	private void importWithId(final Message<JsonObject> message) {
+		String importId = message.body().getString("id");
+		if (isEmpty(importId)) {
+			sendError(message, "missing.import.id");
+			return;
+		}
+		validatorFactory.validator(importId, new Handler<AsyncResult<ImportValidator>>() {
+			@Override
+			public void handle(AsyncResult<ImportValidator> event) {
+				if (event.succeeded()) {
+					event.result().exportIfValid(new Handler<JsonObject>() {
+						@Override
+						public void handle(JsonObject event) {
+							final JsonObject errors = event.getJsonObject("errors");
+							if (errors != null && errors.size() > 0) {
+								sendOK(message, new JsonObject().put("result", event));
+							} else {
+								message.body().mergeIn(event);
+								message.body().put("not-persist-report", true);
+								launchImport(message);
+							}
+						}
+					});
+				} else {
+					sendError(message, event.cause().getMessage());
+				}
+			}
+		});
+	}
+
+	private void validateWithId(final Message<JsonObject> message) {
+		String importId = message.body().getString("id");
+		if (isEmpty(importId)) {
+			sendError(message, "missing.import.id");
+			return;
+		}
+		validatorFactory.validator(importId, new Handler<AsyncResult<ImportValidator>>() {
+			@Override
+			public void handle(final AsyncResult<ImportValidator> event) {
+				if (event.succeeded()) {
+					final List<String> admlStructures = (message.body().getJsonArray("adml-structures") != null) ?
+							message.body().getJsonArray("adml-structures").getList() : null;
+					event.result().validate(admlStructures, new Handler<JsonObject>() {
+						@Override
+						public void handle(JsonObject event2) {
+							sendOK(message, new JsonObject().put("result", ((Report) event.result()).getResult()));
+						}
+					});
+				} else {
+					sendError(message, event.cause().getMessage());
+				}
+			}
+		});
+	}
+
+	private void csvColumnMapping(final Message<JsonObject> message) {
+		final String acceptLanguage = message.body().getString("language", "fr");
+		final CsvValidator v = new CsvValidator(vertx, acceptLanguage,
+				this.config.getJsonObject("csvMappings", new JsonObject()));
+		String path = message.body().getString("path");
+		v.columnsMapping(path, new Handler<JsonObject>() {
+			@Override
+			public void handle(JsonObject event) {
+				JsonObject result = v.getResult().put("availableFields", v.getColumnsMapper().availableFields());
+				if (!v.containsErrors()) {
+					result.remove("errors");
+				}
+				sendOK(message, result);
+			}
+		});
 	}
 
 	private void launchImportValidation(final Message<JsonObject> message, final Handler<Report> handler) {
@@ -342,8 +449,7 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 		final ImportValidator v;
 		switch (source) {
 			case "CSV":
-				v = new CsvValidator(vertx, acceptLanguage,
-						config.getJsonObject("csvMappings", new JsonObject()));
+				v = new CsvValidator(vertx, acceptLanguage, message.body());
 				break;
 			case "AAF":
 			case "AAF1D":
@@ -365,10 +471,18 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 		if (path == null && !"CSV".equals(source)) {
 			path = config.getString("import-files");
 		}
-		v.validate(path, new Handler<JsonObject>() {
+		final List<String> admlStructures = (message.body().getJsonArray("adml-structures") != null) ?
+				message.body().getJsonArray("adml-structures").getList() : null;
+		v.validate(path, admlStructures, new Handler<JsonObject>() {
 			@Override
 			public void handle(final JsonObject result) {
 				final Report r = (Report) v;
+				final Handler<Message<JsonObject>> persistHandler = new Handler<Message<JsonObject>>() {
+					@Override
+					public void handle(Message<JsonObject> event) {
+
+					}
+				};
 				if (preDelete && structureExternalId != null && !r.containsErrors()) {
 					final JsonArray externalIds = r.getUsersExternalId();
 					final JsonArray profiles = r.getResult().getJsonArray(Report.PROFILES);
@@ -383,7 +497,9 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 									JsonObject j = (JsonObject) o;
 									String filename = j.getString("profile");
 									r.addUser(filename, j.put("state", r.translate(Report.State.DELETED.name()))
-											.put("translatedProfile", r.translate(j.getString("profile"))));
+											.put("translatedProfile", r.translate(j.getString("profile")))
+											.put("oState", Report.State.DELETED.name())
+									);
 								}
 								r.getResult().put("usersExternalIds", externalIds);
 							} else {
@@ -394,6 +510,7 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 							} else {
 								sendOK(message, new JsonObject().put("result", r.getResult()));
 							}
+							r.persist(persistHandler);
 						}
 					});
 				} else {
@@ -402,6 +519,7 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 					} else {
 						sendOK(message, new JsonObject().put("result", r.getResult()));
 					}
+					r.persist(persistHandler);
 				}
 			}
 		});
@@ -504,6 +622,9 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 			@Override
 			public void handle(final Report report) {
 				if (report != null && !report.containsErrors()) {
+					if (report.isNotReverseFilesOrder()) {
+						message.body().put("notReverseFilesOrder", true);
+					}
 					doImport(message, feed, new Handler<Report>() {
 						@Override
 						public void handle(final Report importReport) {
@@ -541,12 +662,10 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 	}
 
 	private void doImport(final Message<JsonObject> message, final Feed feed, final Handler<Report> h) {
-
 		final String acceptLanguage = getOrElse(message.body().getString("language"), "fr");
-
-
 		final String importPath = message.body().getString("path");
 		final boolean executePostImport = getOrElse(message.body().getBoolean("postImport"), true);
+		final boolean notReverseFilesOrder = message.body().getBoolean("notReverseFilesOrder", false);
 
 		final Importer importer = Importer.getInstance();
 		if (importer.isReady()) {
@@ -563,6 +682,9 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 						return;
 					}
 					final Report report = importer.getReport();
+					if (notReverseFilesOrder) {
+						report.setNotReverseFilesOrder(true);
+					}
 					try {
 						Handler<Message<JsonObject>> handler = new Handler<Message<JsonObject>>() {
 							@Override
@@ -594,7 +716,7 @@ public class Feeder extends BusModBase implements Handler<Message<JsonObject>> {
 							}
 						};
 						if (importPath != null && !importPath.trim().isEmpty()) {
-							feed.launch(importer, importPath, handler);
+							feed.launch(importer, importPath, message.body().getJsonObject(MAPPINGS), handler);
 						} else {
 							feed.launch(importer, handler);
 						}

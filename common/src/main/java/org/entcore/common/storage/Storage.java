@@ -33,6 +33,8 @@ public interface Storage {
 
 	void writeUploadFile(HttpServerRequest request, Long maxSize, Handler<JsonObject> handler);
 
+    default void writeUploadToFileSystem(HttpServerRequest request, String path, Handler<JsonObject> handler){};
+
 	void writeBuffer(Buffer buff, String contentType, String filename, Handler<JsonObject> handler);
 
 	void writeBuffer(String id, Buffer buff, String contentType, String filename, Handler<JsonObject> handler);
@@ -53,6 +55,16 @@ public interface Storage {
 	void removeFiles(JsonArray ids, Handler<JsonObject> handler);
 
 	void copyFile(String id, final Handler<JsonObject> handler);
+
+	default void copyFileId(String id, String to, final Handler<JsonObject> handler)
+	{
+		throw new java.lang.UnsupportedOperationException("Not supported yet.");
+	};
+
+	default void copyFilePath(String path, String to, final Handler<JsonObject> handler)
+	{
+		throw new java.lang.UnsupportedOperationException("Not supported yet.");
+	};
 
 	void writeToFileSystem(String [] ids, String destinationPath, JsonObject alias, Handler<JsonObject> handler);
 

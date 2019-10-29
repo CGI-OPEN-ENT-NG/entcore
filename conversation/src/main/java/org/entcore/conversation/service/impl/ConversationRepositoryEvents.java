@@ -20,6 +20,7 @@
 package org.entcore.conversation.service.impl;
 
 import io.vertx.core.eventbus.DeliveryOptions;
+import org.entcore.common.folders.FolderImporter;
 import org.entcore.common.sql.Sql;
 import org.entcore.common.sql.SqlResult;
 import org.entcore.common.sql.SqlStatementsBuilder;
@@ -132,7 +133,7 @@ public class ConversationRepositoryEvents extends SqlRepositoryEvents {
 	}
 
 	@Override
-	public void exportResources(String exportId, String userId, JsonArray groups, String exportPath,
+	public void exportResources(JsonArray resourcesIds, String exportId, String userId, JsonArray groups, String exportPath,
 			String locale, String host, Handler<Boolean> handler) {
 
 
@@ -143,28 +144,51 @@ public class ConversationRepositoryEvents extends SqlRepositoryEvents {
 					usermessagesattachmentsTable = "conversation.usermessagesattachments";
 
 			JsonArray userIdParam = new JsonArray().add(userId);
+			JsonArray resourcesIdsAndUserIdParams = userIdParam;
+			String resourcesList = "";
 
-			String queryAttachments = "SELECT DISTINCT att.* " + "FROM " + attachmentTable + " att " + "LEFT JOIN "
-					+ usermessagesattachmentsTable + " userAtt ON att.id = userAtt.attachment_id "
-					+ "WHERE userAtt.user_id = ?";
-			JsonArray attachments = new SqlStatementsBuilder().prepared(queryAttachments, userIdParam).build();
+			if(resourcesIds != null)
+			{
+				resourcesIdsAndUserIdParams = new JsonArray().addAll(resourcesIds).add(userId);
+				resourcesList = Sql.listPrepared(resourcesIds);
+			}
+
+			String queryAttachments = "SELECT DISTINCT att.* " +
+																"FROM " + attachmentTable + " att " +
+																"LEFT JOIN " + usermessagesattachmentsTable + " userAtt ON att.id = userAtt.attachment_id " +
+																"WHERE " +
+																	(resourcesIds != null ? ("userAtt.message_id IN " + resourcesList + " AND ") : "") +
+																	"userAtt.user_id = ?";
+			JsonArray attachments = new SqlStatementsBuilder().prepared(queryAttachments, resourcesIdsAndUserIdParams).build();
 			queries.put(attachmentTable, attachments);
 
-			String queryFolders = "SELECT DISTINCT fol.* " + "FROM " + foldersTable + " fol " + "WHERE fol.user_id = ?";
+			String queryFolders = "SELECT DISTINCT fol.* " +
+														"FROM " + foldersTable + " fol " +
+														"WHERE fol.user_id = ?";
 			queries.put(foldersTable, new SqlStatementsBuilder().prepared(queryFolders, userIdParam).build());
 
-			String queryMessages = "SELECT DISTINCT mess.* " + "FROM " + messagesTable + " mess " + "LEFT JOIN "
-					+ usermessagesTable + " umess ON mess.id = umess.message_id " + "WHERE umess.user_id = ?";
-			queries.put(messagesTable, new SqlStatementsBuilder().prepared(queryMessages, userIdParam).build());
+			String queryMessages =  "SELECT DISTINCT mess.* " +
+															"FROM " + messagesTable + " mess " +
+															"LEFT JOIN " + usermessagesTable + " umess ON mess.id = umess.message_id " +
+															"WHERE " +
+																(resourcesIds != null ? ("mess.id IN " + resourcesList + " AND ") : "") +
+																"umess.user_id = ?";
+			queries.put(messagesTable, new SqlStatementsBuilder().prepared(queryMessages, resourcesIdsAndUserIdParams).build());
 
-			String queryUserMessages = "SELECT DISTINCT umess.* " + "FROM " + usermessagesTable + " umess "
-					+ "WHERE umess.user_id = ?";
-			queries.put(usermessagesTable, new SqlStatementsBuilder().prepared(queryUserMessages, userIdParam).build());
+			String queryUserMessages =  "SELECT DISTINCT umess.* " +
+																	"FROM " + usermessagesTable + " umess " +
+																	"WHERE " +
+																		(resourcesIds != null ? ("umess.message_id IN " + resourcesList + " AND ") : "") +
+																	  "umess.user_id = ?";
+			queries.put(usermessagesTable, new SqlStatementsBuilder().prepared(queryUserMessages, resourcesIdsAndUserIdParams).build());
 
-			String queryUserMessagesAttachments = "SELECT DISTINCT umessatt.* " + "FROM " + usermessagesattachmentsTable
-					+ " umessatt " + "WHERE umessatt.user_id = ?";
+			String queryUserMessagesAttachments = "SELECT DISTINCT umessatt.* " +
+																						"FROM " + usermessagesattachmentsTable + " umessatt " +
+																						"WHERE " +
+																							(resourcesIds != null ? ("umessatt.message_id IN " + resourcesList + " AND ") : "") +
+																							"umessatt.user_id = ?";
 			queries.put(usermessagesattachmentsTable,
-					new SqlStatementsBuilder().prepared(queryUserMessagesAttachments, userIdParam).build());
+					new SqlStatementsBuilder().prepared(queryUserMessagesAttachments, resourcesIdsAndUserIdParams).build());
 
 			AtomicBoolean exported = new AtomicBoolean(false);
 
@@ -183,6 +207,113 @@ public class ConversationRepositoryEvents extends SqlRepositoryEvents {
 					}
 				}
 			});
+	}
+
+	@Override
+	public void importResources(String importId, String userId, String username, String importPath, String locale, Handler<JsonObject> handler) {
+
+		fs.readFile(importPath + File.separator + "conversation.usermessages", result -> {
+			if (result.failed()) {
+				log.error(title
+						+ " : Failed to read table conversation.usermessages in archive.");
+				handler.handle(new JsonObject().put("status", "error"));
+			} else {
+
+				JsonObject results = result.result().toJsonObject();
+				JsonArray ja = results.getJsonArray("results");
+				if (!ja.isEmpty()) {
+					exportUserId = ja.getJsonArray(0).getString(results.getJsonArray("fields").getList().indexOf("user_id"));
+				}
+
+				List<String> tables = new ArrayList<>(Arrays.asList("messages", "attachments", "folders",
+						"usermessages", "usermessagesattachments"));
+				String postgresRandomUuid = "md5(random()::text || clock_timestamp()::text)::uuid";
+				Map<String,String> tablesWithId = new HashMap<>();
+				tablesWithId.put("messages", postgresRandomUuid);
+				tablesWithId.put("attachments", postgresRandomUuid);
+				tablesWithId.put("folders", postgresRandomUuid);
+
+				importTables(importPath, "conversation", tables, tablesWithId, userId, username, new SqlStatementsBuilder(), handler);
+			}
+		});
+	}
+
+	private String exportUserId;
+
+	@Override
+	public JsonArray transformResults(JsonArray fields, JsonArray results, String userId, String username, SqlStatementsBuilder builder, String table) {
+
+		// Dirty hack..
+		if ("messages".equals(table) && exportUserId != null) {
+			results.forEach(res -> {
+				JsonArray l =(JsonArray)res;
+				for (int i = 0; i < l.size(); i++) {
+					if (l.getValue(i) instanceof String) {
+						String s = (String)l.getValue(i);
+						String field = fields.getString(i);
+						if ("from".equals(field) || "to".equals(field)
+								|| "cc".equals(field) || "cci".equals(field)) {
+							l.getList().set(i, s.replace(exportUserId, userId));
+						}
+						if ("displayNames".equals(field)) {
+						    l.getList().set(i, s.replaceAll(exportUserId+"\\$[^\\$]+?\\$",userId+"\\$"+username+"\\$"));
+                        }
+					}
+				}
+			});
+		}
+		//
+
+		List<String> list = Arrays.asList("folders", "usermessages", "usermessagesattachments");
+
+		if (list.contains(table)) {
+			int index = fields.getList().indexOf("user_id");
+			results.forEach(res -> {
+				((JsonArray)res).getList().set(index,userId);
+			});
+		}
+
+		// Re-orders items to avoid breaking foreign key constraint
+		if ("folders".equals(table) || "messages".equals(table)) {
+			final int indexId = fields.getList().indexOf("id");
+			final int parentId = fields.getList().indexOf("parent_id");
+			label: for (int i = 0; i < results.size();) {
+				String parent = results.getJsonArray(i).getString(parentId);
+				if (parent != null) {
+					for (int j = i; j < results.size(); j++) {
+						String id = results.getJsonArray(j).getString(indexId);
+						if (id.equals(parent)) {
+							JsonArray tmp = results.getJsonArray(i);
+							results.getList().set(i, results.getJsonArray(j));
+							results.getList().set(j, tmp);
+							continue label;
+						}
+					}
+				}
+				i++;
+			}
+		}
+
+		return results;
+	}
+
+	@Override
+	protected void importDocumentsDependancies(String importPath, String userId, String userName, JsonArray statements,
+											 Handler<JsonArray> handler) {
+		super.importDocumentsDependancies(importPath, userId, userName, statements, newStatements -> {
+			final String filePath = importPath + File.separator + "Attachments";
+			fs.exists(filePath, exist -> {
+				if (exist.succeeded() && exist.result().booleanValue()) {
+					FolderImporter.FolderImporterContext ctx = new FolderImporter.FolderImporterContext(filePath, userId, userName, false);
+					fileImporter.importFoldersFlatFormat(ctx, rapport -> {
+						fileImporter.applyFileIdsChange(ctx, newStatements.getList());
+						handler.handle(newStatements);
+					});
+				} else {
+					handler.handle(newStatements);
+				}
+			});
+		});
 	}
 
 	@Override
@@ -246,16 +377,6 @@ public class ConversationRepositoryEvents extends SqlRepositoryEvents {
 
 		SqlStatementsBuilder builder = new SqlStatementsBuilder();
 
-		String unusedAttachments =
-			"WITH unusedAtts AS (" +
-				"SELECT DISTINCT attachment_id AS id FROM conversation.usermessagesattachments uma " +
-				"GROUP BY attachment_id " +
-				"HAVING every(user_id IN "+ Sql.listPrepared(userIds.getList()) +") " +
-			") SELECT " +
-			"CASE WHEN COUNT(id) = 0 THEN '[]' ELSE json_agg(distinct id) END AS attachmentIds "+
-			"FROM unusedAtts u";
-		builder.prepared(unusedAttachments, userIds);
-
 		String deleteFolder =
 			"DELETE FROM conversation.folders f " +
 			"WHERE f.user_id IN " + Sql.listPrepared(userIds.getList());
@@ -311,32 +432,12 @@ public class ConversationRepositoryEvents extends SqlRepositoryEvents {
 			builder.prepared(setCC, paramsToCc);
 			builder.prepared(setFrom, paramsFrom);
 		}
-		sql.transaction(builder.build(), new DeliveryOptions().setSendTimeout(timeout), SqlResult.validResultsHandler(new Handler<Either<String,JsonArray>>() {
-			public void handle(Either<String, JsonArray> event) {
-				if(event.isLeft()){
-					log.error("Error deleting conversation data : " + event.left().getValue());
-					return;
-				}
-
-				JsonArray results = event.right().getValue();
-				JsonArray attachmentIds =
-					results.getJsonArray(0).size() > 0 ?
-						new fr.wseduc.webutils.collections.JsonArray(results.getJsonArray(0).getJsonObject(0).getString("attachmentIds", "[]")) :
-						new fr.wseduc.webutils.collections.JsonArray();
-
-				for(Object attachmentObj: attachmentIds){
-					final String attachmentId = (String) attachmentObj;
-					storage.removeFile(attachmentId, new Handler<JsonObject>() {
-						@Override
-						public void handle(JsonObject event) {
-							if (!"ok".equals(event.getString("status"))) {
-								log.error("["+ConversationRepositoryEvents.class.getSimpleName()+"] Error while tying to delete attachment file (_id: {"+attachmentId+"})");
-							}
-						}
-					});
-				}
+		sql.transaction(builder.build(), new DeliveryOptions().setSendTimeout(timeout),
+				SqlResult.validResultsHandler(event -> {
+			if(event.isLeft()){
+				log.error("Error deleting conversation data : " + event.left().getValue());
 			}
-		}, "attachmentIds"));
+		}));
 	}
 
 }

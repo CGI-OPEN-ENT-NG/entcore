@@ -38,6 +38,18 @@
 				});
 			}
 		}
+
+		var intervalId = setInterval(displayMessage, 200);
+		function displayMessage() {
+			if ($("#message span")[0] && $("#message span")[0].innerHTML) {
+				if ($("#message span")[0].innerHTML != 'wayf.message') {
+					$("#message").show();
+					clearInterval(intervalId);
+				} else {
+					clearInterval(intervalId);
+				}
+			}
+		}
 	</script>
 </head>
 
@@ -49,6 +61,9 @@
 	<div>
 		<section id="credentials-content">
 			<i class="logo"></i>
+			<h2 class="row vertical-spacing" style="display:none" id="message">
+				<i18n>wayf.message</i18n>
+			</h2>
 			<h2 class="row vertical-spacing">
 				<i18n>wayf.select.profile</i18n>
 			</h2>

@@ -19,7 +19,7 @@
 
 package org.entcore.feeder.timetable.udt;
 
-import fr.wseduc.swift.storage.DefaultAsyncResult;
+import fr.wseduc.webutils.DefaultAsyncResult;
 import fr.wseduc.webutils.I18n;
 import fr.wseduc.webutils.Utils;
 import org.entcore.common.neo4j.Neo4jUtils;
@@ -87,13 +87,12 @@ public class UDTImporter extends AbstractTimetableImporter {
 	private Map<String, JsonObject> eleves = new HashMap<>();
 	private Map<String, String> codeGepDiv = new HashMap<>();
 	private Set<String> usedGroupInCourses = new HashSet<>();
-	private final boolean authorizeUserCreation;
 	private final boolean udcalLowerCase;
+	private Map<String, JsonArray> aggregateRgmtCourses = new HashMap<>();
 
 	public UDTImporter(Vertx vertx, String uai, String path, String acceptLanguage, boolean authorizeUserCreation) {
-		super(uai, path, acceptLanguage);
+		super(uai, path, acceptLanguage, authorizeUserCreation);
 		this.vertx = vertx;
-		this.authorizeUserCreation = authorizeUserCreation;
 		udcalLowerCase = vertx.fileSystem().existsBlocking(basePath + "udcal_24.xml");
 		if (udcalLowerCase) {
 			filenameWeekPatter = Pattern.compile("udcal_[0-9]{2}_([0-9]{2})\\.xml$");
@@ -345,6 +344,12 @@ public class UDTImporter extends AbstractTimetableImporter {
 				group.put("groups", groups);
 			}
 			groups.add(name);
+			JsonArray aggClasses = aggregateRgmtCourses.get(name);
+			if (aggClasses == null) {
+				aggClasses = new JsonArray();
+				aggregateRgmtCourses.put(name, aggClasses);
+			}
+			aggClasses.add(currentEntity.getString("code_div"));
 		} else {
 			final String classId = currentEntity.getString("code_div");
 			JsonObject classe = classes.get(classId);
@@ -599,7 +604,11 @@ public class UDTImporter extends AbstractTimetableImporter {
 		}
 		final String sId = subjects.get(entity.getString("mat"));
 		if (isNotEmpty(sId)) {
-			c.put("subjectId", sId);
+			c.put("timetableSubjectId", sId);
+		}
+		final String sBCNId = subjectsBCN.get(entity.getString("mat"));
+		if (isNotEmpty(sBCNId)) {
+			c.put("subjectId", sBCNId);
 		}
 		final String rId = rooms.get(entity.getString("salle"));
 		if (isNotEmpty(rId)) {
@@ -617,10 +626,21 @@ public class UDTImporter extends AbstractTimetableImporter {
 			String name = regroup.get(entity.getString("rgpmt"));
 			if (isNotEmpty(name)) {
 				groups.add(name);
-			}
-			String gName = entity.getString("gpe");
-			if (isNotEmpty(gName)) {
-				groups.add(entity.getString("div") + " Gr " + gName);
+				final JsonArray aggClasses = aggregateRgmtCourses.get(name);
+				if (aggClasses != null && !aggClasses.isEmpty()) {
+					final TreeSet<String> cclasses = new TreeSet<>();
+					final JsonArray cc = c.getJsonArray("classes");
+					if (cc != null) {
+						cclasses.addAll(cc.getList());
+					}
+					cclasses.addAll(aggClasses.getList());
+					c.put("classes", new JsonArray(new ArrayList<>(cclasses)));
+				}
+			} else {
+				String gName = entity.getString("gpe");
+				if (isNotEmpty(gName)) {
+					groups.add(entity.getString("div") + " Gr " + gName);
+				}
 			}
 		}
 		try {
@@ -655,18 +675,24 @@ public class UDTImporter extends AbstractTimetableImporter {
 		}
 
 		try {
+			final long start = System.currentTimeMillis();
+			log.info("Launch UDT import : " + uai);
+
 			final String parentPath = FileUtils.getParentPath(path);
 			FileUtils.unzip(path, parentPath);
 			new UDTImporter(vertx, uai, parentPath + File.separator, acceptLanguage, udtUserCreation).launch(new Handler<AsyncResult<Report>>() {
 				@Override
 				public void handle(AsyncResult<Report> event) {
 					if (event.succeeded()) {
+						log.info("Import EDT : " + uai + " elapsed time " + (System.currentTimeMillis() - start) + " ms.");
 						message.reply(new JsonObject().put("status", "ok")
 								.put("result", event.result().getResult()));
-						if (postImport != null) {
+						if (postImport != null && udtUserCreation) {
 							postImport.execute();
 						}
 					} else {
+						log.error("Error import UDT : " + uai + " elapsed time " +
+								(System.currentTimeMillis() - start) + " ms.");
 						log.error(event.cause().getMessage(), event.cause());
 						JsonObject json = new JsonObject().put("status", "error")
 								.put("message",

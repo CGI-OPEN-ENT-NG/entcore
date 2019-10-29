@@ -28,6 +28,8 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.entcore.common.utils.Config;
 
+import java.io.File;
+
 
 public class RepositoryHandler implements Handler<Message<JsonObject>> {
 
@@ -45,30 +47,70 @@ public class RepositoryHandler implements Handler<Message<JsonObject>> {
 	}
 
 	@Override
-	public void handle(Message<JsonObject> message) {
+	public void handle(Message<JsonObject> message)
+	{
 		String action = message.body().getString("action", "");
-		switch (action) {
+
+		String exportedBusAddress = "entcore.export";
+
+		switch (action)
+		{
+			case "duplicate" :
+				exportedBusAddress = "entcore.duplicate";
+				// Fallthrough
 			case "export" :
-				final JsonArray apps = message.body().getJsonArray("apps");
+				final JsonArray exportApps = message.body().getJsonArray("apps");
+				final JsonArray resourcesIds = message.body().getJsonArray("resourcesIds");
 				String title = Server.getPathPrefix(Config.getConf());
-				if (!Utils.isEmpty(title) && apps.contains(title.substring(1))) {
+
+				if (!Utils.isEmpty(title) && exportApps.contains(title.substring(1)))
+				{
 					final String exportId = message.body().getString("exportId", "");
 					String userId = message.body().getString("userId", "");
 					String path = message.body().getString("path", "");
 					final String locale = message.body().getString("locale", "fr");
 					final String host = message.body().getString("host", "");
 					JsonArray groupIds = message.body().getJsonArray("groups", new fr.wseduc.webutils.collections.JsonArray());
-					repositoryEvents.exportResources(exportId, userId, groupIds, path, locale, host, new Handler<Boolean>() {
+
+					String finalBusAddress = exportedBusAddress;
+					repositoryEvents.exportResources(resourcesIds, exportId, userId, groupIds, path, locale, host, new Handler<Boolean>()
+					{
 						@Override
-						public void handle(Boolean isExported) {
+						public void handle(Boolean isExported)
+						{
 							JsonObject exported = new JsonObject()
 									.put("action", "exported")
 									.put("status", (isExported ? "ok" : "error"))
 									.put("exportId", exportId)
 									.put("locale", locale)
 									.put("host", host);
-							eb.publish("entcore.export", exported);
+							eb.publish(finalBusAddress, exported);
 						}
+					});
+				}
+				break;
+			case "import" :
+				final JsonObject importApps = message.body().getJsonObject("apps");
+				final String appTitle = Server.getPathPrefix(Config.getConf());
+
+				if (!Utils.isEmpty(appTitle) && importApps.containsKey(appTitle.substring(1)))
+				{
+					final String importId = message.body().getString("importId", "");
+					String userId = message.body().getString("userId", "");
+					String userName = message.body().getString("userName", "");
+					String path = message.body().getString("path", "");
+					String locale = message.body().getString("locale", "fr");
+					String folderPath = path + File.separator + importApps.getString(appTitle.substring(1));
+
+					repositoryEvents.importResources(importId, userId, userName, folderPath, locale, success -> {
+							JsonObject imported = new JsonObject()
+									.put("action", "imported")
+									.put("importId", importId)
+									.put("app", appTitle.substring(1))
+									.put("resourcesNumber", success.getString("resourcesNumber"))
+									.put("duplicatesNumber", success.getString("duplicatesNumber"))
+									.put("errorsNumber", success.getString("errorsNumber"));
+							eb.publish("entcore.import", imported);
 					});
 				}
 				break;

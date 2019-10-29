@@ -43,7 +43,9 @@ public interface AppRegistryService {
 	void listGroupsWithRoles(String structureId, boolean classGroups, Handler<Either<String, JsonArray>> handler);
 
 	void listApplicationsWithActions(String structureId, String actionType, Handler<Either<String, JsonArray>> handler);
-	
+
+	void listApplicationsWithRoles(String structureId, Handler<Either<String, JsonArray>> handler);
+
 	void listApplicationRolesWithGroups(String structureId, String appId, Handler<Either<String, JsonArray>> handler);
 
 	// if structureId is null => global role
@@ -85,4 +87,6 @@ public interface AppRegistryService {
 	void massAuthorize(String structureId, List<String> profiles, List<String> rolesId, Handler<Either<String, JsonObject>> handler);
 
 	void massUnauthorize(String structureId, List<String> profiles, List<String> rolesId, Handler<Either<String, JsonObject>> handler);
+
+	void massAuthorization(JsonArray data, Handler<Either<String, JsonObject>> handler);
 }

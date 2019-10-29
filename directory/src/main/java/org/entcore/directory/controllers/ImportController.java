@@ -19,14 +19,17 @@
 
 package org.entcore.directory.controllers;
 
+import fr.wseduc.rs.Delete;
 import fr.wseduc.rs.Get;
 import fr.wseduc.rs.Post;
+import fr.wseduc.rs.Put;
 import fr.wseduc.security.ActionType;
 import fr.wseduc.security.SecuredAction;
 import fr.wseduc.webutils.DefaultAsyncResult;
 import fr.wseduc.webutils.Either;
 import fr.wseduc.webutils.I18n;
 import fr.wseduc.webutils.http.BaseController;
+import io.vertx.core.json.DecodeException;
 import org.entcore.common.http.filter.AdminFilter;
 import org.entcore.common.http.filter.ResourceFilter;
 import org.entcore.common.user.DefaultFunctions;
@@ -47,6 +50,9 @@ import java.io.File;
 import java.util.UUID;
 
 import static fr.wseduc.webutils.Utils.isNotEmpty;
+import static fr.wseduc.webutils.request.RequestUtils.bodyToJson;
+import static org.entcore.common.http.response.DefaultResponseHandler.defaultResponseHandler;
+import static org.entcore.common.http.response.DefaultResponseHandler.notEmptyResponseHandler;
 import static org.entcore.common.http.response.DefaultResponseHandler.reportResponseHandler;
 import static org.entcore.common.utils.FileUtils.deleteImportPath;
 
@@ -63,6 +69,38 @@ public class ImportController extends BaseController {
 		renderView(request);
 	}
 
+	@Post("/wizard/column/mapping")
+	@ResourceFilter(AdminFilter.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void columnsMapping(final HttpServerRequest request) {
+		uploadImport(request, new Handler<AsyncResult<ImportInfos>>() {
+			@Override
+			public void handle(AsyncResult<ImportInfos> event) {
+				if (event.succeeded()) {
+					importService.columnsMapping(event.result(), reportResponseHandler(vertx, event.result().getPath(), request));
+				} else {
+					badRequest(request, event.cause().getMessage());
+				}
+			}
+		});
+	}
+
+	@Post("/wizard/classes/mapping")
+	@ResourceFilter(AdminFilter.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void classesMapping(final HttpServerRequest request) {
+		uploadImport(request, new Handler<AsyncResult<ImportInfos>>() {
+			@Override
+			public void handle(AsyncResult<ImportInfos> event) {
+				if (event.succeeded()) {
+					importService.classesMapping(event.result(), reportResponseHandler(vertx, event.result().getPath(), request));
+				} else {
+					badRequest(request, event.cause().getMessage());
+				}
+			}
+		});
+	}
+
 	@Post("/wizard/validate")
 	@ResourceFilter(AdminFilter.class)
 	@SecuredAction(value = "", type = ActionType.RESOURCE)
@@ -71,10 +109,32 @@ public class ImportController extends BaseController {
 			@Override
 			public void handle(AsyncResult<ImportInfos> event) {
 				if (event.succeeded()) {
-					importService.validate(event.result(), reportResponseHandler(vertx, event.result().getPath(), request));
+					UserUtils.getUserInfos(eb, request, user -> {
+						if (user != null) {
+							importService.validate(event.result(), user,
+									reportResponseHandler(vertx, event.result().getPath(), request));
+						} else {
+							unauthorized(request, "invalid.user");
+						}
+					});
 				} else {
 					badRequest(request, event.cause().getMessage());
 				}
+			}
+		});
+	}
+
+	@Put("/wizard/validate/:id")
+	@ResourceFilter(AdminFilter.class) // TODO add import owner and check
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void validateWithId(final HttpServerRequest request) {
+		String importId = request.params().get("id");
+		UserUtils.getUserInfos(eb, request, user -> {
+			if (user != null) {
+				importService.validate(importId, user, reportResponseHandler(vertx,
+						config.getString("wizard-path", "/tmp") + File.separator + importId, request));
+			} else {
+				unauthorized(request, "invalid.user");
 			}
 		});
 	}
@@ -99,6 +159,23 @@ public class ImportController extends BaseController {
 				importInfos.setLanguage(I18n.acceptLanguage(request));
 				if (isNotEmpty(request.formAttributes().get("classExternalId"))) {
 					importInfos.setOverrideClass(request.formAttributes().get("classExternalId"));
+				}
+
+				if (isNotEmpty(request.formAttributes().get("columnsMapping")) ||
+						isNotEmpty(request.formAttributes().get("classesMapping"))) {
+					try {
+						if (isNotEmpty(request.formAttributes().get("columnsMapping"))) {
+							importInfos.setMappings(new JsonObject(request.formAttributes().get("columnsMapping")));
+						}
+						if (isNotEmpty(request.formAttributes().get("classesMapping"))) {
+							importInfos.setClassesMapping(new JsonObject(request.formAttributes().get("classesMapping")));
+						}
+					} catch (DecodeException e) {
+						handler.handle(new DefaultAsyncResult<ImportInfos>(new ImportException("invalid.columns.mapping", e)));
+						deleteImportPath(vertx, path);
+						deleteImportPath(vertx, path);
+						return;
+					}
 				}
 				try {
 					importInfos.setFeeder(request.formAttributes().get("type"));
@@ -179,6 +256,13 @@ public class ImportController extends BaseController {
 		return "true".equalsIgnoreCase(param);
 	}
 
+	@Get("/wizard/import/:id")
+	@ResourceFilter(AdminFilter.class)
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void findImportDraft(final HttpServerRequest request) {
+		importService.findById(request.params().get("id"), defaultResponseHandler(request));
+	}
+
 	@Post("/wizard/import")
 	@ResourceFilter(AdminFilter.class)
 	@SecuredAction(value = "", type = ActionType.RESOURCE)
@@ -229,6 +313,57 @@ public class ImportController extends BaseController {
 				}
 			}
 		});
+	}
+
+	@Put("/wizard/import/:id")
+	@ResourceFilter(AdminFilter.class) // TODO add import owner and check
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void launchImport(final HttpServerRequest request) {
+		String importId = request.params().get("id");
+		importService.doImport(importId, reportResponseHandler(vertx,
+				config.getString("wizard-path", "/tmp") + File.separator + importId, request));
+	}
+
+	@Post("/wizard/update/:id/:profile")
+	@ResourceFilter(AdminFilter.class) // TODO add import owner and check
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void createLine(final HttpServerRequest request) {
+		final String importId = request.params().get("id");
+		final String profile = request.params().get("profile");
+		bodyToJson(request, new Handler<JsonObject>() { // TODO add json validator
+			@Override
+			public void handle(JsonObject line) {
+				importService.addLine(importId, profile, line, notEmptyResponseHandler(request));
+			}
+		});
+	}
+
+	@Put("/wizard/update/:id/:profile")
+	@ResourceFilter(AdminFilter.class) // TODO add import owner and check
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void updateLine(final HttpServerRequest request) {
+		final String importId = request.params().get("id");
+		final String profile = request.params().get("profile");
+		bodyToJson(request, new Handler<JsonObject>() { // TODO add json validator
+			@Override
+			public void handle(JsonObject line) {
+				importService.updateLine(importId, profile, line, notEmptyResponseHandler(request));
+			}
+		});
+	}
+
+	@Delete("/wizard/update/:id/:profile/:line")
+	@ResourceFilter(AdminFilter.class) // TODO add import owner and check
+	@SecuredAction(value = "", type = ActionType.RESOURCE)
+	public void deleteLine(final HttpServerRequest request) {
+		final String importId = request.params().get("id");
+		final String profile = request.params().get("profile");
+		try {
+			final Integer line = Integer.parseInt(request.params().get("line"));
+			importService.deleteLine(importId, profile, line, notEmptyResponseHandler(request));
+		} catch (NumberFormatException e) {
+			badRequest(request, "invalid.line");
+		}
 	}
 
 	public void setImportService(ImportService importService) {

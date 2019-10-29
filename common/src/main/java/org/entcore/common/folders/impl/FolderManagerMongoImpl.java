@@ -11,8 +11,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import io.vertx.core.json.Json;
 import org.entcore.common.folders.ElementQuery;
 import org.entcore.common.folders.ElementShareOperations;
 import org.entcore.common.folders.FolderManager;
@@ -22,6 +25,7 @@ import org.entcore.common.share.ShareService;
 import org.entcore.common.storage.Storage;
 import org.entcore.common.user.UserInfos;
 import org.entcore.common.utils.StringUtils;
+import org.entcore.common.mongodb.MongoDbResult;
 
 import fr.wseduc.mongodb.MongoDb;
 import fr.wseduc.mongodb.MongoUpdateBuilder;
@@ -32,7 +36,10 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.core.file.FileSystem;
+import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -59,17 +66,25 @@ public class FolderManagerMongoImpl implements FolderManager {
 
 	protected final Storage storage;
 
-	protected final FileSystem fileSystem;
+	protected final Vertx				vertx;
+	protected final FileSystem	fileSystem;
+	protected final EventBus		eb;
 
 	protected final QueryHelper queryHelper;
 
 	protected final ShareService shareService;
 	protected final InheritShareComputer inheritShareComputer;
 
-	public FolderManagerMongoImpl(String collection, Storage sto, FileSystem fs, ShareService shareService) {
+	protected final String imageResizerAddress;
+
+	public FolderManagerMongoImpl(String collection, Storage sto, Vertx vertx, FileSystem fs, EventBus eb, ShareService shareService, String imageResizerAddress)
+	{
 		this.storage = sto;
+		this.vertx = vertx;
 		this.fileSystem = fs;
+		this.eb = eb;
 		this.shareService = shareService;
+		this.imageResizerAddress = imageResizerAddress;
 		this.queryHelper = new QueryHelper(collection);
 		this.inheritShareComputer = new InheritShareComputer(queryHelper);
 	}
@@ -82,13 +97,7 @@ public class FolderManagerMongoImpl implements FolderManager {
 			if (parentId.isPresent()) {
 				doc.put("eParent", parentId.get());
 			}
-			doc.put("eType", FILE_TYPE);
-			doc.put("created", now);
-			doc.put("modified", now);
-			doc.put("owner", ower);
-			doc.put("ownerName", ownerName);
-			String name = DocumentHelper.getName(doc);
-			doc.put("nameSearch", name != null ? StringUtils.stripAccentsToLowerCase(name) : "");
+			DocumentHelper.initFile(doc, ower, ownerName);
 			//
 			return queryHelper.insert(doc);
 		}).setHandler(handler);
@@ -269,29 +278,15 @@ public class FolderManagerMongoImpl implements FolderManager {
 
 	@Override
 	public void createExternalFolder(JsonObject folder, UserInfos user, String externalId, Handler<AsyncResult<JsonObject>> handler) {
-		folder.put("eType", FOLDER_TYPE);
-			String now = MongoDb.formatDate(new Date());
-			folder.put("created", now);
-			folder.put("modified", now);
-			folder.put("owner", user.getUserId());
-			folder.put("ownerName", user.getUsername());
+			DocumentHelper.initFolder(folder, user.getUserId(), user.getUsername());
 			folder.put("externalId", externalId);
-			String name = DocumentHelper.getName(folder);
-			folder.put("nameSearch", name != null ? StringUtils.stripAccentsToLowerCase(name) : "");
 			queryHelper.upsertFolder(folder).setHandler(handler);
 	}
 
 	@Override
 	public void createFolder(JsonObject folder, UserInfos user, Handler<AsyncResult<JsonObject>> handler) {
 		this.inheritShareComputer.compute(folder, false).compose(res -> {
-			folder.put("eType", FOLDER_TYPE);
-			String now = MongoDb.formatDate(new Date());
-			folder.put("created", now);
-			folder.put("modified", now);
-			folder.put("owner", user.getUserId());
-			folder.put("ownerName", user.getUsername());
-			String name = DocumentHelper.getName(folder);
-			folder.put("nameSearch", name != null ? StringUtils.stripAccentsToLowerCase(name) : "");
+			DocumentHelper.initFolder(folder, user.getUserId(), user.getUsername());
 			return queryHelper.insert(folder);
 		}).setHandler(handler);
 	}
@@ -507,7 +502,15 @@ public class FolderManagerMongoImpl implements FolderManager {
 		if (query.getHierarchical() != null && query.getHierarchical()) {
 			queryHelper.listWithParents(builder).setHandler(handler);
 		} else {
-			queryHelper.findAll(builder).setHandler(handler);
+			if(query.isDirectShared()){
+				DocumentQueryBuilder pBuilder = new DocumentQueryBuilder().filterByInheritShareAndOwner(user).withFileType(FolderManager.FOLDER_TYPE).withProjection("_id");
+				queryHelper.findAllAsList(pBuilder).compose(folders->{
+					Set<String> eParents = folders.stream().map(f->(JsonObject)f).map(f->f.getString("_id")).collect(Collectors.toSet());
+					return queryHelper.findAll(builder.withEparentNotIn(eParents));
+				}).setHandler(handler);
+			}else{
+				queryHelper.findAll(builder).setHandler(handler);
+			}
 		}
 	}
 
@@ -789,6 +792,122 @@ public class FolderManagerMongoImpl implements FolderManager {
 			//
 			return queryHelper.update(id, doc).map(doc);
 		}).setHandler(handler);
+	}
+
+	@Override
+	public void createThumbnailIfNeeded(JsonObject uploadedDoc, JsonObject mongoDocument, Handler<AsyncResult<JsonObject>> handler)
+	{
+		Future<JsonObject> future = Future.future();
+
+		if(this.imageResizerAddress == null || this.imageResizerAddress.trim().equals("") == true)
+		{
+			future.fail(new RuntimeException("No image resizer"));
+			handler.handle(future);
+
+			return;
+		}
+
+		String fileId = DocumentHelper.getId(uploadedDoc);
+		String documentId = DocumentHelper.getId(mongoDocument);
+		JsonObject thumbs = DocumentHelper.getThumbnails(mongoDocument);
+
+		if (fileId != null && thumbs != null && !fileId.trim().isEmpty() && !thumbs.isEmpty() && DocumentHelper.isImage(uploadedDoc) == true)
+		{
+			Pattern size = Pattern.compile("([0-9]+)x([0-9]+)");
+			JsonArray outputs = new JsonArray();
+
+			for (String thumb : thumbs.getMap().keySet())
+			{
+				Matcher m = size.matcher(thumb);
+				if (m.matches())
+				{
+					try
+					{
+						int width = Integer.parseInt(m.group(1));
+						int height = Integer.parseInt(m.group(2));
+
+						if (width == 0 && height == 0)
+							continue;
+
+						JsonObject j = new JsonObject().put("dest", this.storage.getProtocol() + "://" + this.storage.getBucket());
+
+						if (width != 0)
+							j.put("width", width);
+						if (height != 0)
+							j.put("height", height);
+
+						outputs.add(j);
+					}
+					catch (NumberFormatException e)
+					{
+						log.error("Invalid thumbnail size.", e);
+					}
+				}
+			}
+
+			if (outputs.size() > 0)
+			{
+				JsonObject json = new JsonObject()
+					.put("action", "resizeMultiple")
+					.put("src", this.storage.getProtocol() + "://" + this.storage.getBucket() + ":" + fileId)
+					.put("destinations", outputs);
+
+				this.eb.send(this.imageResizerAddress, json, new Handler<AsyncResult<Message<JsonObject>>>()
+				{
+					@Override
+					public void handle(AsyncResult<Message<JsonObject>> result)
+					{
+						if(result.succeeded() ==  true)
+						{
+							Message<JsonObject> event = result.result();
+							JsonObject thumbnails = event.body().getJsonObject("outputs");
+
+							if ("ok".equals(event.body().getString("status")) && thumbnails != null)
+							{
+								JsonObject mongoUpdate = new JsonObject().put("$set", new JsonObject().put("thumbnails", thumbnails));
+
+								if(documentId != null)
+								{
+									Future update = queryHelper.update(documentId, mongoUpdate);
+									update.setHandler(new Handler<AsyncResult<Void>>()
+									{
+										@Override
+										public void handle(AsyncResult<Void> result)
+										{
+											if (result.succeeded() == false)
+												future.fail(result.cause());
+											else
+												future.complete(DocumentHelper.setThumbnails(uploadedDoc, thumbnails));
+
+											handler.handle(future);
+										}
+									});
+								}
+								else
+								{
+									future.complete(DocumentHelper.setThumbnails(uploadedDoc, thumbnails));
+									handler.handle(future);
+								}
+								return;
+							}
+						}
+
+						future.fail(new RuntimeException("Failed to send a request to the image resizer"));
+						handler.handle(future);
+					}
+				});
+			}
+			else
+			{
+				future.complete(null);
+				handler.handle(future);
+			}
+		}
+		else
+		{
+			future.complete(uploadedDoc);
+			handler.handle(future);
+		}
 	}
 
 	@Override

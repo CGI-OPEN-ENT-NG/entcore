@@ -37,6 +37,9 @@ public interface UserAuthAccount {
 	void activateAccountByLoginAlias(String login, String activationCode, String password, String email,
 						 String phone, String theme, HttpServerRequest request, Handler<Either<String, String>> handler);
 
+	void activateAccountWithRevalidateTerms(String login, String activationCode, String password, String email,
+						 String phone, String theme, HttpServerRequest request, Handler<Either<String, String>> handler);
+
 	void resetPassword(String login, String resetCode, String password, Handler<Boolean> handler);
 
 	void changePassword(String login, String password, Handler<Boolean> handler);
@@ -44,6 +47,8 @@ public interface UserAuthAccount {
 	void sendResetCode(HttpServerRequest request, String login, SendPasswordDestination dest,boolean checkFederatedLogin , Handler<Boolean> handler);
 
 	void generateResetCode(String login, boolean checkFederatedLogin , Handler<Either<String, String>> handler);
+
+	void massGenerateResetCode(JsonArray userIds, boolean checkFederatedLogin , Handler<Either<String, JsonObject>> handler);
 
 	void blockUser(String id, boolean block, Handler<Boolean> handler);
 
