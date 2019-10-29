@@ -26,6 +26,10 @@ import { Component, ChangeDetectionStrategy } from '@angular/core'
                 <s5l>create.flash.message</s5l>
                 <i class="fa fa-bullhorn"></i>
             </button>
+            <button routerLink="subjects/create">
+                <s5l>create.subjects</s5l>
+                <i class="fa fa-bullhorn"></i>
+            </button>
         </div>
     `,
     changeDetection: ChangeDetectionStrategy.OnPush
