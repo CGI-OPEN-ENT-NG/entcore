@@ -12,7 +12,8 @@ export let routes : Routes = [
 			{ path: 'groups', 	loadChildren: '../groups/groups.module#GroupsModule' },
 			{ path: 'imports-exports', loadChildren: '../imports-exports/imports-exports.module#ImportsExportsModule' },
 			{ path: 'services', loadChildren: '../services/services.module#ServicesModule' },
-			{ path: 'management', loadChildren: '../management/management.module#ManagementModule'}
+			{ path: 'management', loadChildren: '../management/management.module#ManagementModule'},
+			{ path: 'subjects', loadChildren: '../subjects/subjects.module#SubjectsModule'}
 		]
 	}
 ]
