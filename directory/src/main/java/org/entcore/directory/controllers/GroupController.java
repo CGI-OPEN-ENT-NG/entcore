@@ -102,7 +102,8 @@ public class GroupController extends BaseController {
 				groupService.createOrUpdateManual(body, structureId, classId, notEmptyResponseHandler(request, 201));
 			}
 		});
-	}
+
+}
 
 	@Put("/group/:groupId")
 	@SecuredAction(value = "", type = ActionType.RESOURCE)

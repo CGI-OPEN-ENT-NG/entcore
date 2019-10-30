@@ -29,4 +29,19 @@ public class DefaultSubjectService implements SubjectService {
 
         neo.execute(query, params, validResultHandler(results));
     }
+
+    @Override
+    public void createOrUpdateManual(JsonObject subject, Handler<Either<String, JsonObject>> result) {
+        JsonObject params = new JsonObject()
+                .put("structureId", subject.getString("structureId"))
+                .put("label", subject.getString("label"))
+                .put("code", subject.getString("code"))
+                .put("manuel", true);
+
+        String query =  "MATCH (s: Structure {id : {structureId} })"+
+                "CREATE (s)-[r: SUBJECT]-> (sub:Subject { code: {code}, label: {label}, manual: {manual} }) RETURN sub;" +
+                "return sub.id as id, sub.code as code, sub.label as label";
+
+        neo.execute(query, params, validUniqueResultHandler(result));
+    }
 }
