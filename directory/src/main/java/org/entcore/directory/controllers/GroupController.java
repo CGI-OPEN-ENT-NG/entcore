@@ -124,7 +124,8 @@ public class GroupController extends BaseController {
 				});
 			}
 		});
-	}
+
+}
 
 	@Put("/group/:groupId")
 	@SecuredAction(value = "", type = ActionType.RESOURCE)

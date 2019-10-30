@@ -4,10 +4,9 @@ import {ActivatedRoute, Router} from '@angular/router';
 import {HttpClient} from '@angular/common/http';
 
 import {SubjectsStore} from '../subjects.store';
-import {GroupModel, SubjectModel} from '../../core/store/models';
+import {SubjectModel} from '../../core/store/models';
 import {NotifyService, SpinnerService} from '../../core/services';
 
-import {trim} from '../../shared/utils/string';
 
 import 'rxjs/add/operator/catch';
 import 'rxjs/add/operator/mergeMap';
@@ -44,6 +43,24 @@ export class SubjectCreate {
 
     createNewSubject() {
         this.newSubject.structureId = this.subjectsStore.structure.id;
+
+        this.spinner.perform('portal-content',
+            this.http.post<{ id: string }>('/directory/subject', this.newSubject).do(result => {
+                this.subjectsStore.structure.subjects.data.push(this.newSubject);
+
+                this.ns.success({
+                    key: 'notify.subject.create.content',
+                    parameters: {subject: this.newSubject.label}
+                }, 'notify.subject.create.title');
+
+            }).catch(err => {
+                this.ns.error({
+                    key: 'notify.subject.create.error.content',
+                    parameters: {subject: this.newSubject.label}
+                }, 'notify.subject.create.error.title', err);
+                throw err;
+            }).toPromise()
+        )
 
     }
 

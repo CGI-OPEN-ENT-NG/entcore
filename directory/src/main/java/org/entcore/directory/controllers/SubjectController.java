@@ -1,21 +1,19 @@
 package org.entcore.directory.controllers;
 
 import fr.wseduc.rs.Get;
+import fr.wseduc.rs.Post;
 import fr.wseduc.security.ActionType;
 import fr.wseduc.security.SecuredAction;
-import fr.wseduc.webutils.Either;
-import fr.wseduc.webutils.I18n;
 import fr.wseduc.webutils.http.BaseController;
 import io.vertx.core.Handler;
 import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import org.entcore.common.user.UserInfos;
 import org.entcore.common.user.UserUtils;
-import org.entcore.directory.services.GroupService;
 import org.entcore.directory.services.SubjectService;
 
-import static org.entcore.common.http.response.DefaultResponseHandler.arrayResponseHandler;
-import static org.entcore.common.http.response.DefaultResponseHandler.leftToResponse;
+import static fr.wseduc.webutils.request.RequestUtils.bodyToJson;
+import static org.entcore.common.http.response.DefaultResponseHandler.*;
 
 public class SubjectController extends BaseController {
 
@@ -40,5 +38,17 @@ public class SubjectController extends BaseController {
                 }
             }
         });
+    }
+
+    @Post("/subject")
+    @SecuredAction(value = "", type = ActionType.RESOURCE)
+    public void create(final HttpServerRequest request) {
+        bodyToJson(request, pathPrefix + "createManualSubject", new Handler<JsonObject>() {
+            @Override
+            public void handle(JsonObject body) {
+                subjectService.createOrUpdateManual(body, notEmptyResponseHandler(request, 201));
+            }
+        });
+
     }
 }
