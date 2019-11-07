@@ -1,0 +1,26 @@
+<div class="panel-header is-display-flex has-space-between">
+    <div>
+                <span>
+                    {{ subject?.label }}
+                </span>
+    </div>
+    <div>
+        <button type="button"
+                *ngIf="subject?.manual === 'true'"
+                class="lct-group-update-button">
+            <s5l>group.rename.button</s5l>
+            <i class="fa fa-pencil is-size-5"></i>
+        </button>
+        <button type="button"
+                *ngIf="subject?.manual === 'true'"
+                class="lct-group-delete-button">
+            <s5l>group.delete.button</s5l>
+            <i class="fa fa-trash is-size-5"></i>
+        </button>
+    </div>
+</div>
+
+<div class="padded">
+    <span _ngcontent-c11="" class="display-name">{{ subject?.label }}</span>
+    <span _ngcontent-c11="" class="display-name">{{ subject?.code }}</span>
+</div>

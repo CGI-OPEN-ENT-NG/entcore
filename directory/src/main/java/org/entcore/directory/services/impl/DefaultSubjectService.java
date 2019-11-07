@@ -36,11 +36,12 @@ public class DefaultSubjectService implements SubjectService {
                 .put("structureId", subject.getString("structureId"))
                 .put("label", subject.getString("label"))
                 .put("code", subject.getString("code"))
-                .put("manuel", true);
+                .put("source", "MANUAL");
 
         String query =  "MATCH (s: Structure {id : {structureId} })"+
-                "CREATE (s)-[r: SUBJECT]-> (sub:Subject { code: {code}, label: {label}, manual: {manual} }) RETURN sub;" +
-                "return sub.id as id, sub.code as code, sub.label as label";
+                "MERGE (s)<-[r: SUBJECT]-(sub:Subject { code: {code}, label: {label}, source: {source} }) "+
+                "ON CREATE SET sub.id = id(sub) + '-' + timestamp()" +
+                "RETURN sub.id as id, sub.label as label, sub.code as code, sub.source as source;";
 
         neo.execute(query, params, validUniqueResultHandler(result));
     }

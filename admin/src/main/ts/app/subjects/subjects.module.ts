@@ -9,6 +9,7 @@ import {SubjectsComponent} from './subjects.component'
 import {SubjectsStore} from "./subjects.store";
 import {SubjectCreate} from "./create/subject-create.component";
 import {SubjectsResolver} from "./subjects.resolver";
+import {SubjectDetails} from "./details/subject-details.component";
 
 
 @NgModule({
@@ -22,6 +23,7 @@ import {SubjectsResolver} from "./subjects.resolver";
     declarations: [
         SubjectsComponent,
         SubjectCreate,
+        SubjectDetails
     ],
     exports: [
         RouterModule
