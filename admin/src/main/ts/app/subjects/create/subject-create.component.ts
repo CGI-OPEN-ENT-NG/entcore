@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component} from '@angular/core';
 import {Location} from '@angular/common';
 import {ActivatedRoute, Router} from '@angular/router';
 import {HttpClient} from '@angular/common/http';
@@ -13,6 +13,7 @@ import 'rxjs/add/operator/mergeMap';
 import 'rxjs/add/operator/map';
 import 'rxjs/add/operator/do';
 import 'rxjs/add/operator/toPromise';
+import {Subject} from "rxjs";
 
 @Component({
     selector: 'subject-create',
@@ -31,7 +32,8 @@ export class SubjectCreate {
                 private spinner: SpinnerService,
                 private router: Router,
                 private route: ActivatedRoute,
-                private location: Location) {
+                private location: Location,
+                private cdRef: ChangeDetectorRef) {
     }
 
     ngOnInit(): void {
@@ -45,13 +47,15 @@ export class SubjectCreate {
         this.newSubject.structureId = this.subjectsStore.structure.id;
 
         this.spinner.perform('portal-content',
-            this.http.post<{ id: string }>('/directory/subject', this.newSubject).do(result => {
-                this.subjectsStore.structure.subjects.data.push(this.newSubject);
+            this.http.post<SubjectModel>('/directory/subject', this.newSubject)
+                .do(result => {
+                this.subjectsStore.structure.subjects.data.unshift(result);
 
                 this.ns.success({
                     key: 'notify.subject.create.content',
                     parameters: {subject: this.newSubject.label}
                 }, 'notify.subject.create.title');
+                 this.cdRef.markForCheck();
 
             }).catch(err => {
                 this.ns.error({
@@ -63,17 +67,6 @@ export class SubjectCreate {
         )
 
     }
-
-
-    isSelected = (subject: SubjectModel) => {
-        return this.selectedSubject && subject && this.selectedSubject.id === subject.id;
-    };
-
-    filterByInput = (subject: SubjectModel) => {
-        if (!this.subjectInputFilter) return true;
-        return subject.label.toLowerCase()
-            .indexOf(this.subjectInputFilter.toLowerCase()) >= 0;
-    };
 
     cancel() {
         this.location.back();

@@ -2,9 +2,10 @@ import {ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit
 import {ActivatedRoute, Data, NavigationEnd, Router} from '@angular/router';
 import {Subscription} from 'rxjs/Subscription';
 
-import {routing} from '../core/services';
+import {routing, SpinnerService} from '../core/services';
 import {CommunicationRulesService} from '../communication/communication-rules.service';
 import {SubjectsStore} from "./subjects.store";
+import {StructureModel, SubjectModel} from "../core/store/models";
 
 @Component({
     selector: 'subjects-root',
@@ -14,20 +15,17 @@ import {SubjectsStore} from "./subjects.store";
 })
 export class SubjectsComponent implements OnInit, OnDestroy {
 
-    // Tabs
-    tabs = [
-        {label: "CreateSubject", view: "create"},
-        {label: "reconcile", view: "profile"},
-    ];
-
     private error: Error;
     private structureSubscriber: Subscription;
-
+    type: string;
+    subjectInputFilter: string;
+    selectedSubject: SubjectModel;
 
     constructor(
         private route: ActivatedRoute,
         public router: Router,
-        public subjectsStore: SubjectsStore) {
+        public subjectsStore: SubjectsStore,
+        private spinner: SpinnerService) {
     }
 
     ngOnInit(): void {
@@ -42,11 +40,34 @@ export class SubjectsComponent implements OnInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
-        console.log("log ngOnDestroy");
+        this.structureSubscriber.unsubscribe()
     }
 
     onError(error: Error) {
         console.error(error);
         this.error = error;
+    }
+
+
+    isSelected = (subject: SubjectModel) => {
+        return this.selectedSubject && subject && this.selectedSubject.id === subject.id;
+    };
+
+
+    filterByInput = (subject: SubjectModel) => {
+        if (!this.subjectInputFilter) return true;
+        return subject.label.toLowerCase()
+            .indexOf(this.subjectInputFilter.toLowerCase()) >= 0;
+    };
+
+    closeCompanion() {
+        this.router.navigate(['../subjects'], {relativeTo: this.route}).then(() => {
+            this.subjectsStore.subject = null;
+        });
+    }
+
+    openUserDetail(subject) {
+        this.subjectsStore.subject = subject;
+        this.spinner.perform('portal-content', this.router.navigate([subject.id, 'details'], {relativeTo: this.route}));
     }
 }

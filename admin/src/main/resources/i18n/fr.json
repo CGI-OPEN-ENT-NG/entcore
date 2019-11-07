@@ -813,7 +813,8 @@
     "subjects": "Matière",
     "search.subject": "Rechercher",
     "create.subjects": "Ajouter une matière",
-    "create.subjects.label": "Nom",
+    "create.subjects.label": "Label",
+    "create.subjects.code": "Code",
     "create.subjects.cancel": "Annuler",
     "create.subjects.submit": "Créer"
 }
