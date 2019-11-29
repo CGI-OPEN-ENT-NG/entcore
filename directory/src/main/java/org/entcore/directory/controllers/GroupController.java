@@ -163,7 +163,7 @@ public class GroupController extends BaseController {
 	public void delete(final HttpServerRequest request) {
 		final String groupId = request.params().get("groupId");
 		if (groupId != null && !groupId.trim().isEmpty()) {
-			groupService.deleteManual(groupId, defaultResponseHandler(request, 204));
+			groupService.deleteManual(groupId, defaultResponseHandler (request, 204));
 		} else {
 			badRequest(request, "invalid.id");
 		}

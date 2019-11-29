@@ -11,4 +11,7 @@ public interface SubjectService {
 
     void createOrUpdateManual(JsonObject subject, Handler<Either<String, JsonObject>> result);
 
+    void updateManual(JsonObject subject, Handler<Either<String, JsonObject>> result);
+
+    void deleteManual(String subjectId, Handler<Either<String, JsonObject>> notEmptyResponseHandler);
 }

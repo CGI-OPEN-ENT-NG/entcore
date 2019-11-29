@@ -1,7 +1,9 @@
 package org.entcore.directory.controllers;
 
+import fr.wseduc.rs.Delete;
 import fr.wseduc.rs.Get;
 import fr.wseduc.rs.Post;
+import fr.wseduc.rs.Put;
 import fr.wseduc.security.ActionType;
 import fr.wseduc.security.SecuredAction;
 import fr.wseduc.webutils.http.BaseController;
@@ -49,6 +51,29 @@ public class SubjectController extends BaseController {
                 subjectService.createOrUpdateManual(body, notEmptyResponseHandler(request, 201));
             }
         });
+    }
 
+    @Put("/subject/:subjectId")
+    @SecuredAction(value = "", type = ActionType.RESOURCE)
+    public void update(final HttpServerRequest request) {
+        final String subjectId = request.params().get("subjectId");
+        if (subjectId != null && !subjectId.trim().isEmpty()) {
+            bodyToJson(request, pathPrefix + "updateManualSubject", new Handler<JsonObject>() {
+                @Override
+                public void handle(JsonObject body) {
+                    body.put("id", subjectId);
+                    subjectService.updateManual(body, notEmptyResponseHandler(request, 201));
+                }
+            });
+        }
+    }
+
+    @Delete("/subject/:subjectId")
+    @SecuredAction(value = "", type = ActionType.RESOURCE)
+    public void delete(final HttpServerRequest request) {
+        final String subjectId = request.params().get("subjectId");
+        if (subjectId != null && !subjectId.trim().isEmpty()) {
+            subjectService.deleteManual(subjectId, defaultResponseHandler(request, 204));
+        }
     }
 }

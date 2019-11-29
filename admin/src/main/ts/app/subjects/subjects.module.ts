@@ -10,6 +10,7 @@ import {SubjectsStore} from "./subjects.store";
 import {SubjectCreate} from "./create/subject-create.component";
 import {SubjectsResolver} from "./subjects.resolver";
 import {SubjectDetails} from "./details/subject-details.component";
+import {SubjectsService} from "./subjects.service";
 
 
 @NgModule({
@@ -30,7 +31,8 @@ import {SubjectDetails} from "./details/subject-details.component";
     ],
     providers: [
         SubjectsResolver,
-        SubjectsStore
+        SubjectsStore,
+        SubjectsService
     ]
 })
 export class SubjectsModule {

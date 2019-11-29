@@ -5,12 +5,13 @@ export class SubjectModel extends Model<SubjectModel> {
     id?: string;
     label?: string;
     code?: string;
-    manual?: string;
+    source?: string;
     structureId?: string;
 
     constructor() {
         super({
             create: '/directory/subject'
+
         });
     }
 
@@ -21,8 +22,8 @@ export class SubjectModel extends Model<SubjectModel> {
             code: this.code,
             structureId: this.structureId
         };
-        if(this.manual){
-            back['manual'] = this.manual;
+        if(this.source){
+            back['manual'] = this.source;
         }
         return back;
     }

@@ -1,26 +1,66 @@
 <div class="panel-header is-display-flex has-space-between">
     <div>
                 <span>
-                    {{ subject?.label }}
+                    {{ 'subjects' | translate }}
                 </span>
     </div>
-    <div>
+    <div *ngIf="subject?.source === 'MANUAL'">
         <button type="button"
-                *ngIf="subject?.manual === 'true'"
-                class="lct-group-update-button">
-            <s5l>group.rename.button</s5l>
+                class="lct-group-update-button"
+                (click)="renameButtonClicked.next()">
+            <s5l>subject.rename.button</s5l>
             <i class="fa fa-pencil is-size-5"></i>
         </button>
         <button type="button"
-                *ngIf="subject?.manual === 'true'"
-                class="lct-group-delete-button">
-            <s5l>group.delete.button</s5l>
+                class="lct-group-delete-button"
+                (click)="deleteButtonClicked.next(subjectsStore.subject)">
+            <s5l>subject.delete.button</s5l>
             <i class="fa fa-trash is-size-5"></i>
         </button>
     </div>
 </div>
 
 <div class="padded">
-    <span _ngcontent-c11="" class="display-name">{{ subject?.label }}</span>
-    <span _ngcontent-c11="" class="display-name">{{ subject?.code }}</span>
+    <p>{{ 'create.subjects.label' | translate }}: <span _ngcontent-c11="" class="display-name">{{ subject?.label }}</span></p>
+    <p>{{ 'create.subjects.code' | translate }}: <span _ngcontent-c11="" class="display-name">{{ subject?.code }}</span>
 </div>
+
+<lightbox-confirm lightboxTitle="subject.delete.confirm.title"
+                  [show]="deleteConfirmationDisplayed"
+                  (onCancel)="deleteConfirmationClicked.next('cancel')"
+                  (onConfirm)="deleteConfirmationClicked.next('confirm')">
+    <span [innerHTML]="'subject.delete.confirm.content' | translate"></span>
+</lightbox-confirm>
+
+<lightbox [show]="renameLightboxDisplayed" (onClose)="this.renameConfirmationClicked.next('cancel')">
+    <h2>
+        <s5l>subject.update.lightbox.title</s5l>
+    </h2>
+    <div class="rename-lightbox__form">
+        <form #renameForm="ngForm">
+            <form-field>
+                <input type="text" [(ngModel)]="subjectNewLabel" name="subjectNewLabel"
+                       required pattern=".*\S+.*" #subjectNewLabelInput="ngModel"
+                       (blur)="onBlurSubjectFields('subjectNewLabel', subjectNewLabel)">
+                <form-errors [control]="subjectNewLabelInput"></form-errors>
+            </form-field>
+            <form-field>
+                <input type="text" [(ngModel)]="subjectNewCode" name="subjectNewCode"
+                       required pattern=".*\S+.*" #subjectNewCodeInput="ngModel"
+                       (blur)="onBlurSubjectFields('subjectNewCode', subjectNewCode)">
+                <form-errors [control]="subjectNewCodeInput"></form-errors>
+            </form-field>
+
+            <div class="is-display-flex has-flex-end">
+                <button type="button" class="cancel" (click)="renameConfirmationClicked.next('cancel')">
+                    {{ 'cancel' | translate }}
+                </button>
+                <button type="button" class="confirm has-left-margin-10"
+                        (click)="renameConfirmationClicked.next('confirm')"
+                        [disabled]="renameForm.pristine || renameForm.invalid">
+                    {{ 'confirm' | translate }}
+                </button>
+            </div>
+        </form>
+    </div>
+</lightbox>
