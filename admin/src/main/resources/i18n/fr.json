@@ -816,5 +816,16 @@
     "create.subjects.label": "Label",
     "create.subjects.code": "Code",
     "create.subjects.cancel": "Annuler",
-    "create.subjects.submit": "Créer"
+    "create.subjects.submit": "Créer",
+    "subject.delete.confirm.content": "Veuillez confirmer la suppression définitive de la maitère.",
+    "subject.delete.confirm.title": "Confirmation requise",
+    "subject.rename.button": "Renommer",
+    "subject.delete.button": "Supprimer",
+    "subject.update.lightbox.title": "Modifier la matière",
+    "subject.update.lightbox.label": "Modifier la matière",
+    "subject.update.lightbox.code": "Modifier le code",
+    "subject.rename.notify.success.title": "Renommage effectué",
+    "subject.rename.notify.success.content": "La matière a bien été renommée.",
+    "subject.rename.notify.error.title": "Erreur lors du renommage",
+    "subject.rename.notify.error.content": "La matière n'a pas pu être renommée."
 }
