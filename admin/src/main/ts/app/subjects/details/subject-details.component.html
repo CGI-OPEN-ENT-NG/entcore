@@ -6,13 +6,13 @@
     </div>
     <div *ngIf="subject?.source === 'MANUAL'">
         <button type="button"
-                class="lct-group-update-button"
+                class="lct-subject-update-button"
                 (click)="renameButtonClicked.next()">
             <s5l>subject.rename.button</s5l>
             <i class="fa fa-pencil is-size-5"></i>
         </button>
         <button type="button"
-                class="lct-group-delete-button"
+                class="lct-subject-delete-button"
                 (click)="deleteButtonClicked.next(subjectsStore.subject)">
             <s5l>subject.delete.button</s5l>
             <i class="fa fa-trash is-size-5"></i>
@@ -21,8 +21,10 @@
 </div>
 
 <div class="padded">
-    <p>{{ 'create.subjects.label' | translate }}: <span _ngcontent-c11="" class="display-name">{{ subject?.label }}</span></p>
-    <p>{{ 'create.subjects.code' | translate }}: <span _ngcontent-c11="" class="display-name">{{ subject?.code }}</span>
+    <p><strong>{{ 'create.subjects.label' | translate }} :</strong></p>
+    <p> <span class="display-name">{{ subject?.label }}</span></p>
+    <p><strong>{{ 'create.subjects.code' | translate }} :</strong></p>
+    <p><span class="display-name">{{ subject?.code }}</span></p>
 </div>
 
 <lightbox-confirm lightboxTitle="subject.delete.confirm.title"
@@ -38,19 +40,21 @@
     </h2>
     <div class="rename-lightbox__form">
         <form #renameForm="ngForm">
-            <form-field>
-                <input type="text" [(ngModel)]="subjectNewLabel" name="subjectNewLabel"
-                       required pattern=".*\S+.*" #subjectNewLabelInput="ngModel"
-                       (blur)="onBlurSubjectFields('subjectNewLabel', subjectNewLabel)">
-                <form-errors [control]="subjectNewLabelInput"></form-errors>
-            </form-field>
-            <form-field>
-                <input type="text" [(ngModel)]="subjectNewCode" name="subjectNewCode"
-                       required pattern=".*\S+.*" #subjectNewCodeInput="ngModel"
-                       (blur)="onBlurSubjectFields('subjectNewCode', subjectNewCode)">
-                <form-errors [control]="subjectNewCodeInput"></form-errors>
-            </form-field>
 
+            <p><strong>{{ 'create.subjects.label' | translate }} :</strong>
+                <br/>
+                <input type="text" [(ngModel)]="subjectNewLabel" name="subjectNewLabel"
+                      required pattern=".*\S+.*" #subjectNewLabelInput="ngModel"
+                      (blur)="onBlurSubjectFields('subjectNewLabel', subjectNewLabel)">
+                <form-errors [control]="subjectNewLabelInput"></form-errors>
+            </p>
+            <p><strong>{{ 'create.subjects.code' | translate }} :</strong>
+                <br/>
+                <input type="text" [(ngModel)]="subjectNewCode" name="subjectNewCode"
+                      required pattern=".*\S+.*" #subjectNewCodeInput="ngModel"
+                      (blur)="onBlurSubjectFields('subjectNewCode', subjectNewCode)">
+                <form-errors [control]="subjectNewCodeInput"></form-errors>
+            </p>
             <div class="is-display-flex has-flex-end">
                 <button type="button" class="cancel" (click)="renameConfirmationClicked.next('cancel')">
                     {{ 'cancel' | translate }}

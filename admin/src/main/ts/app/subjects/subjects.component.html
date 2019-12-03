@@ -1,6 +1,6 @@
 <div class="flex-header">
     <h1><i class="fa fa-file"></i>
-        <s5l>Subjects</s5l>
+        <s5l>{{ 'subjects' | translate}}</s5l>
     </h1>
     <button [routerLink]="['create']"
             [class.hidden]="router.isActive('/admin/' + subjectsStore.structure?.id + '/subjects/create', true)">

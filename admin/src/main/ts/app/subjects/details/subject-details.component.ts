@@ -1,4 +1,4 @@
-import {ChangeDetectionStrategy, ChangeDetectorRef, Component, group, OnDestroy, OnInit} from "@angular/core";
+import {ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit} from "@angular/core";
 import {HttpClient, HttpErrorResponse} from "@angular/common/http";
 import {SubjectsStore} from "../subjects.store";
 import {NotifyService, SpinnerService} from "../../core/services";
@@ -83,7 +83,7 @@ export class SubjectDetails implements OnInit, OnDestroy {
              }, (error: HttpErrorResponse) => {
                 this.notifyService.error({
                     key: 'subject.delete.notify.error.content',
-                    parameters: {groupName: group.name}
+                    parameters: {subject: subject.label}
                 }, 'subject.delete.notify.error.title');
             });
     }
