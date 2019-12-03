@@ -1930,6 +1930,9 @@ subjects-root {
     }
   }
 
+  form-field label {
+    flex: 0 0 auto!important;
+  }
   div.action {
     display: flex;
     justify-content: flex-end;

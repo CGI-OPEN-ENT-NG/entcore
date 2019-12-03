@@ -13,7 +13,6 @@ import 'rxjs/add/operator/mergeMap';
 import 'rxjs/add/operator/map';
 import 'rxjs/add/operator/do';
 import 'rxjs/add/operator/toPromise';
-import {Subject} from "rxjs";
 
 @Component({
     selector: 'subject-create',
@@ -50,8 +49,8 @@ export class SubjectCreate {
             this.http.post<SubjectModel>('/directory/subject', this.newSubject)
                 .do(result => {
                 this.subjectsStore.structure.subjects.data.unshift(result);
-
-                this.ns.success({
+                    this.routeToSubject(result);
+                    this.ns.success({
                     key: 'notify.subject.create.content',
                     parameters: {subject: this.newSubject.label}
                 }, 'notify.subject.create.title');
@@ -66,6 +65,10 @@ export class SubjectCreate {
             }).toPromise()
         )
 
+    }
+
+    routeToSubject(s: SubjectModel) {
+        this.router.navigate([s.id, 'details'], {relativeTo: this.route.parent});
     }
 
     cancel() {

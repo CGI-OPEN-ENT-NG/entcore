@@ -28,7 +28,7 @@ import { Component, ChangeDetectionStrategy } from '@angular/core'
             </button>
             <button routerLink="subjects/create">
                 <s5l>create.subjects</s5l>
-                <i class="fa fa-bullhorn"></i>
+                <i class="fa fa-file"></i>
             </button>
         </div>
     `,
