@@ -10,6 +10,8 @@ import fr.wseduc.webutils.http.BaseController;
 import io.vertx.core.Handler;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonObject;
+import org.entcore.common.http.filter.AdminFilter;
+import org.entcore.common.http.filter.ResourceFilter;
 import org.entcore.common.user.UserInfos;
 import org.entcore.common.user.UserUtils;
 import org.entcore.directory.services.SubjectService;
@@ -27,7 +29,7 @@ public class SubjectController extends BaseController {
 
 
     @Get("/subject/admin/list")
-    @SecuredAction(value = "", type = ActionType.RESOURCE)
+    @SecuredAction(value = "", type = ActionType.AUTHENTICATED)
     public void listAdmin(final HttpServerRequest request) {
         UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
             @Override
@@ -44,6 +46,7 @@ public class SubjectController extends BaseController {
 
     @Post("/subject")
     @SecuredAction(value = "", type = ActionType.RESOURCE)
+    @ResourceFilter(AdminFilter.class)
     public void create(final HttpServerRequest request) {
         bodyToJson(request, pathPrefix + "createManualSubject", new Handler<JsonObject>() {
             @Override
@@ -55,6 +58,7 @@ public class SubjectController extends BaseController {
 
     @Put("/subject/:subjectId")
     @SecuredAction(value = "", type = ActionType.RESOURCE)
+    @ResourceFilter(AdminFilter.class)
     public void update(final HttpServerRequest request) {
         final String subjectId = request.params().get("subjectId");
         if (subjectId != null && !subjectId.trim().isEmpty()) {
@@ -70,6 +74,7 @@ public class SubjectController extends BaseController {
 
     @Delete("/subject/:subjectId")
     @SecuredAction(value = "", type = ActionType.RESOURCE)
+    @ResourceFilter(AdminFilter.class)
     public void delete(final HttpServerRequest request) {
         final String subjectId = request.params().get("subjectId");
         if (subjectId != null && !subjectId.trim().isEmpty()) {
