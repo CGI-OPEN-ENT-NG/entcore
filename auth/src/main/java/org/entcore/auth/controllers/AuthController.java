@@ -115,6 +115,7 @@ public class AuthController extends BaseController {
 	private Map<Object, Object> invalidEmails;
 	private JsonArray authorizedHostsLogin;
 	private ClientCredentialFetcher clientCredentialFetcher;
+	private long sessionsLimit;
 
 	public enum AuthEvent {
 		ACTIVATION, LOGIN, SMS
@@ -152,6 +153,7 @@ public class AuthController extends BaseController {
 		if (server != null && server.get("smsProvider") != null)
 			smsProvider = (String) server.get("smsProvider");
 		slo = config.getBoolean("slo", false);
+		sessionsLimit = config.getLong("sessions-limit", 0L);
 //		if (server != null) {
 //			Boolean cluster = (Boolean) server.get("cluster");
 //			if (Boolean.TRUE.equals(cluster)) {
@@ -319,7 +321,21 @@ public class AuthController extends BaseController {
 				@Override
 				public void handle(UserInfos user) {
 					if (user == null || !config.getBoolean("auto-redirect", true)) {
-						viewLogin(request, null, request.params().get("callBack"));
+						if (sessionsLimit > 0L) {
+							UserUtils.getSessionsNumber(eb, ar -> {
+								if (ar.succeeded()) {
+									if (ar.result() > sessionsLimit) {
+										renderView(request, new JsonObject(), "tooload.html", null);
+									} else {
+										viewLogin(request, null, request.params().get("callBack"));
+									}
+								} else {
+									viewLogin(request, null, request.params().get("callBack"));
+								}
+							});
+						} else {
+							viewLogin(request, null, request.params().get("callBack"));
+						}
 					} else {
 						String callBack = request.params().get("callBack");
 						if (isEmpty(callBack)) {
