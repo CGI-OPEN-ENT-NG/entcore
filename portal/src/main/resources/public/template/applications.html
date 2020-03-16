@@ -12,19 +12,19 @@
 			<div class="element reduce-block-six" ng-repeat="application in bookmarkedApps | filter: filterBookmark"
 				ode-drag-value="[[application.address]]" ode-drag-target="remove-app-bookmark">
 				<div class="container">
-					<a href="[[application.address]]" target="[[application.target]]" draggable="false">
+					<a ng-click="openAppWithCheck(application)" draggable="false">
 						<i class="[[application.icon]]" ng-if="application.icon.indexOf('/') === -1"></i>
 						<img skin-src="[[application.icon]]" ng-if="application.icon.indexOf('/') !== -1" />
 					</a>
 					<legend>
-						<a href="[[application.address]]" target="[[application.target]]" translate
-							content="[[application.displayName]]" draggable="false"></a>
+						<a ng-click="openAppWithCheck(application)" translate content="[[application.displayName]]" draggable="false"></a>
 					</legend>
 				</div>
 			</div>
 		</div>
 	</nav>
 </div>
+
 <div ode-drop-target="remove-app-bookmark" ode-ondrop="removeBookmark($value)">
 	<!-- Search apps -->
 	<div class="row">
@@ -38,12 +38,12 @@
 					ng-repeat="application in applications | orderBy:order | filter:searchDisplayName"
 					ode-drag-value="[[application.address]]" ode-drag-target="add-app-bookmark">
 					<div class="container" tooltip="[[application.displayName]]">
-						<a href="[[application.address]]" target="[[application.target]]" draggable="false">
+						<a ng-click="openAppWithCheck(application)" draggable="false">
 							<i class="[[application.icon]]" ng-if="application.icon.indexOf('/') === -1"></i>
 							<img skin-src="[[application.icon]]" ng-if="application.icon.indexOf('/') !== -1" />
 						</a>
 						<legend>
-							<a href="[[application.address]]" target="[[application.target]]" translate
+							<a ng-click="openAppWithCheck(application)" translate
 								content="[[application.displayName]]" draggable="false"></a>
 						</legend>
 					</div>
@@ -52,3 +52,19 @@
 		</nav>
 	</div>
 </div>
+
+<lightbox show="display.showAuthenticatedConnectorLightbox" on-close="display.showAuthenticatedConnectorLightbox = false">
+	<h3><i18n>apps.authenticatedConnector.lightbox.title</i18n></h3>
+	<div class="info vertical-spacing-twice"><i18n>apps.authenticatedConnector.lightbox.content</i18n></div>
+	
+	<div>
+		<button class="horizontal-spacing" 
+				ng-click="display.showAuthenticatedConnectorLightbox = false; openAuthenticatedConnector(authenticatedConnectorClicked)">
+			<i18n>confirm</i18n>
+		</button>
+		<button class="horizontal-spacing" 
+				ng-click="display.showAuthenticatedConnectorLightbox = false;">
+			<i18n>cancel</i18n>
+		</button>
+	</div>
+</lightbox>

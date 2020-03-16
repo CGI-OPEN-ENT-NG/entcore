@@ -6,12 +6,27 @@ const appController = ng.controller('ApplicationController', ['$scope', ($scope)
     $scope.template = template;
     $scope.lang = lang;
     $scope.bookmarkedApps = model.me.bookmarkedApps;
-    $scope.display = {};
+    $scope.display = {
+        showAuthenticatedConnectorLightbox: false
+    };
+    $scope.authenticatedConnectorClicked = {};
+
     http().get('/applications-list').done(function(app){
         $scope.applications = _.filter(app.apps, function(app){
             return app.display !== false;
         });
         $scope.$apply();
+    });
+
+    http().get('/userbook/preference/authenticatedConnectorsAccessed').done(function(data){
+        if(data.preference){
+            try{
+                $scope.authenticatedConnectorsAccessed = JSON.parse(data.preference);
+            }
+            catch(e){
+                console.log('Error parsing authenticatedConnectorsAccessed preferences');
+            }
+        }
     });
 
     $scope.addBookmark = function (address){
@@ -52,7 +67,45 @@ const appController = ng.controller('ApplicationController', ['$scope', ($scope)
 
     $scope.order = function(app){
         return lang.translate(app.displayName);
+    };
+
+    $scope.isAuthenticatedConnector = function(app): boolean {
+        return app.casType || (app.scope && app.scope.length > 0 && app.scope[0]);
+    };
+
+    $scope.isAuthenticatedConnectorFirstAccess = function(app): boolean {
+        return !$scope.authenticatedConnectorsAccessed 
+            || ($scope.authenticatedConnectorsAccessed && !$scope.authenticatedConnectorsAccessed.includes(app.name));
     }
+
+    $scope.openAppWithCheck = function(app): void {
+        if ($scope.isAuthenticatedConnector(app) && $scope.isAuthenticatedConnectorFirstAccess(app)) {
+            $scope.authenticatedConnectorClicked = app;
+            $scope.display.showAuthenticatedConnectorLightbox = true;
+        } else {
+            if (app.target) {
+                window.open(app.address, app.target);
+            } else {
+                window.open(app.address, '_self');
+            }
+        }
+    };
+
+    $scope.openAuthenticatedConnector = function(app): void {
+        if ($scope.authenticatedConnectorsAccessed) {
+            $scope.authenticatedConnectorsAccessed.push(app.name);
+        } else {
+            $scope.authenticatedConnectorsAccessed = [app.name];
+        }
+        
+        http().putJson('/userbook/preference/authenticatedConnectorsAccessed', $scope.authenticatedConnectorsAccessed);
+        
+        if (app.target) {
+            window.open(app.address, app.target);
+        } else {
+            window.open(app.address, '_self');
+        }
+    };
 }]);
 
 ng.controllers.push(appController);
