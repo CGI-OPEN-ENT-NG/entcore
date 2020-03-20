@@ -51,6 +51,7 @@ public class Archive extends BaseServer {
 
 		final Map<String, Long> archiveInProgress = MapFactory.getSyncClusterMap(Archive.ARCHIVES, vertx);
 
+		String exportPath = config.getString("export-path", System.getProperty("java.io.tmpdir"));
 		String importPath = config.getString("import-path", System.getProperty("java.io.tmpdir"));
 		String privateKeyPath = config.getString("archive-private-key", null);
 		boolean forceEncryption = config.getBoolean("force-encryption", false); //TODO: Set the default to true when it is safe to do so
@@ -73,9 +74,10 @@ public class Archive extends BaseServer {
 		if (purgeArchivesCron != null) {
 			try {
 				new CronTrigger(vertx, purgeArchivesCron).schedule(
-						new DeleteOldArchives(
+						new DeleteOldArchives(vertx,
 								new StorageFactory(vertx, config).getStorage(),
 								config.getInteger("deleteDelay", 24),
+								exportPath,
 								importService
 						));
 			} catch (ParseException e) {
