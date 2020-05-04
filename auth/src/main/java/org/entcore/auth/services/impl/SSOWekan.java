@@ -32,6 +32,6 @@ public class SSOWekan extends AbstractSSOProvider {
 
     @Override
     public void execute(Assertion assertion, Handler<Either<String, Object>> handler) {
-        handler.handle(new Either.Left<String, Object>("execute function ot avalable on SSO Gar Implementation"));
+        handler.handle(new Either.Left<String, Object>("execute function ot available on SSO Wekan Implementation"));
     }
 }
