@@ -712,6 +712,11 @@ function AdminDirectoryController($scope, $rootScope, $http, $route, template, m
 			}
 		},
 		{
+			key: 'Chamilo',
+			label: 'directory.admin.export.type.chamilo',			
+			format: 'csv'
+		},
+		{
 			key: "Sacoche",
 			label: 'directory.admin.export.type.sacoche',
 			format: 'csv'

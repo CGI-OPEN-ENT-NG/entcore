@@ -58,6 +58,7 @@ public class SqlConversationService implements ConversationService{
 	private final String attachmentTable;
 	private final String userMessageTable;
 	private final String userMessageAttachmentTable;
+	private final boolean optimizedThreadList;
 
 	public SqlConversationService(Vertx vertx, String schema) {
 		this.eb = Server.getEventBus(vertx);
@@ -68,6 +69,7 @@ public class SqlConversationService implements ConversationService{
 		attachmentTable = schema + ".attachments";
 		userMessageTable = schema + ".usermessages";
 		userMessageAttachmentTable = schema + ".usermessagesattachments";
+		optimizedThreadList = vertx.getOrCreateContext().config().getBoolean("optimized-thread-list", false);
 	}
 
 	@Override
@@ -159,10 +161,17 @@ public class SqlConversationService implements ConversationService{
 
 	@Override
 	public void send(final String parentMessageId, final String draftId, final JsonObject message, final UserInfos user, final Handler<Either<String, JsonObject>> result) {
-		sendMessage(parentMessageId, draftId, message, user, result);
+		final String getThreadId = "SELECT thread_id FROM conversation.messages WHERE id = ? ";
+		sql.prepared(getThreadId, new JsonArray().add(draftId), SqlResult.validUniqueResultHandler(either -> {
+			if (either.isRight()) {
+				sendMessage(parentMessageId, draftId, either.right().getValue().getString("thread_id"), message, user, result);
+			} else {
+				sendMessage(parentMessageId, draftId, null, message, user, result);
+			}
+		}));
 	}
 
-	private void sendMessage(final String parentMessageId, final String draftId, final JsonObject message, final UserInfos user, final Handler<Either<String, JsonObject>> result) {
+	private void sendMessage(final String parentMessageId, final String draftId, final String threadId, final JsonObject message, final UserInfos user, final Handler<Either<String, JsonObject>> result) {
 		if (validationParamsError(user, result, draftId))
 			return;
 
@@ -190,6 +199,24 @@ public class SqlConversationService implements ConversationService{
 				builder.prepared(updateMessage, new fr.wseduc.webutils.collections.JsonArray().add("SENT").add(draftId));
 				builder.prepared(updateUnread, new fr.wseduc.webutils.collections.JsonArray().add(user.getUserId()).add(draftId));
 
+				final String insertThread =
+						"INSERT INTO conversation.threads as t (" +
+						"SELECT thread_id as id, date, subject, \"from\", \"to\", cc, cci, \"displayNames\" " +
+						"FROM conversation.messages m " +
+						"WHERE m.id = ?) " +
+						"ON CONFLICT (id) DO UPDATE SET date = EXCLUDED.date, subject = EXCLUDED.subject, \"from\" = EXCLUDED.\"from\", " +
+						"\"to\" = EXCLUDED.\"to\", cc = EXCLUDED.cc, cci = EXCLUDED.cci, \"displayNames\" = EXCLUDED.\"displayNames\" " +
+						"WHERE t.id = EXCLUDED.id ";
+				builder.prepared(insertThread, new fr.wseduc.webutils.collections.JsonArray().add(draftId));
+
+				final String insertUserThread =
+						"INSERT INTO conversation.userthreads as ut (user_id,thread_id,nb_unread) VALUES (?,?,?) " +
+						"ON CONFLICT (user_id,thread_id) DO UPDATE SET nb_unread = ut.nb_unread + 1 " +
+						"WHERE ut.user_id = EXCLUDED.user_id AND ut.thread_id = EXCLUDED.thread_id";
+				if (threadId != null) {
+					builder.prepared(insertUserThread, new fr.wseduc.webutils.collections.JsonArray().add(user.getUserId()).add(threadId).add(0));
+				}
+
 				for(Object toObj : ids){
 					if(toObj.equals(user.getUserId()))
 						continue;
@@ -199,6 +226,11 @@ public class SqlConversationService implements ConversationService{
 						.put("message_id", draftId)
 						.put("total_quota", totalQuota)
 					);
+
+					if (threadId != null) {
+						builder.prepared(insertUserThread, new fr.wseduc.webutils.collections.JsonArray().add(toObj.toString()).add(threadId).add(1));
+					}
+
 					for(Object attachmentId : attachmentIds){
 						builder.insert(userMessageAttachmentTable, new JsonObject()
 							.put("user_id", toObj.toString())
@@ -271,8 +303,19 @@ public class SqlConversationService implements ConversationService{
 		String messagesFields = "id, date, subject, \"displayNames\", \"to\", \"from\", cc, cci ";
 		JsonArray values = new fr.wseduc.webutils.collections.JsonArray();
 		values.add(user.getUserId());
-		values.add(user.getUserId());
-		String query = " WITH threads AS ( " +
+		final String query;
+		if (optimizedThreadList) {
+			query =
+				"SELECT t.id as id, t.date as date, t.subject as subject, t.\"displayNames\" as \"displayNames\", " +
+				"t.\"to\" as \"to\", t.\"from\" as \"from\", t.cc as cc, t.cci as cci, ut.nb_unread as unread " +
+				"FROM conversation.userthreads ut " +
+				"LEFT JOIN conversation.threads t on ut.thread_id = t.id " +
+				"WHERE  ut.user_id = ? " +
+				"ORDER BY date DESC " +
+				"LIMIT " + nbThread + " OFFSET " + skip;
+		} else {
+			query =
+				" WITH threads AS ( " +
 				" SELECT * from (SELECT  DISTINCT ON (m.thread_id) thread_id AS "+messagesFields+ " FROM " + userMessageTable + " um " +
 				" JOIN "+messageTable+" m ON um.message_id = m.id " +
 				" WHERE um.user_id = ? AND m.state = 'SENT' AND um.trashed = false ORDER BY m.thread_id, m.date DESC) a "+
@@ -282,7 +325,8 @@ public class SqlConversationService implements ConversationService{
 				"FROM threads, conversation.usermessages um JOIN conversation.messages m ON um.message_id = m.id and um.user_id= ? " +
 				"WHERE  um.trashed = false AND m.thread_id=threads.id GROUP BY m.thread_id) c ON threads.id = c.thread_id " +
 				"ORDER BY date DESC";
-
+			values.add(user.getUserId());
+		}
 		sql.prepared(query, values, SqlResult.validResultHandler(results, "to", "toName", "cc", "cci", "ccName", "displayNames"));
 	}
 
@@ -369,7 +413,20 @@ public class SqlConversationService implements ConversationService{
 			query.deleteCharAt(query.length() - 1);
 		query.append(")");
 
-		sql.prepared(query.toString(), values, SqlResult.validUniqueResultHandler(result));
+		final String deleteUserThreads =
+			"DELETE FROM conversation.userthreads " +
+			"WHERE user_id = ? AND thread_id NOT IN (" +
+				"SELECT DISTINCT m.thread_id " +
+				"FROM conversation.usermessages um " +
+				"LEFT JOIN conversation.messages m on um.message_id = m.id " +
+				"WHERE user_id = ? AND trashed = false " +
+			")";
+		final JsonArray values2 = new JsonArray().add(user.getUserId()).add(user.getUserId());
+
+		SqlStatementsBuilder builder = new SqlStatementsBuilder();
+		builder.prepared(query.toString(), values);
+		builder.prepared(deleteUserThreads, values2);
+		sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(0, result));
 	}
 
 	@Override
@@ -385,7 +442,15 @@ public class SqlConversationService implements ConversationService{
 		query.append(" AND um.user_id = ? AND um.trashed = false AND um.message_id = m.id ");
 		values.add(user.getUserId());
 
-		sql.prepared(query.toString(), values, SqlResult.validUniqueResultHandler(result));
+		final String deleteUserThreads =
+			"DELETE FROM conversation.userthreads " +
+			"WHERE thread_id IN " + Sql.listPrepared(threadIds.toArray()) + " AND user_id = ? ";
+		final JsonArray values2 = new JsonArray(threadIds).add(user.getUserId());
+
+		SqlStatementsBuilder builder = new SqlStatementsBuilder();
+		builder.prepared(query.toString(), values);
+		builder.prepared(deleteUserThreads, values2);
+		sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(0, result));
 
 	}
 
@@ -405,7 +470,19 @@ public class SqlConversationService implements ConversationService{
 
 		query.append(generateInVars(messagesId, values));
 
-		sql.prepared(query.toString(), values, SqlResult.validUniqueResultHandler(result));
+		final String insertUserThread =
+				"INSERT INTO conversation.userthreads ( " +
+				"SELECT um.user_id as user_id, m.thread_id as thread_id, SUM(CASE WHEN um.unread THEN 1 ELSE 0 END) as unread " +
+				"FROM conversation.usermessages um " +
+				"JOIN conversation.messages m on um.message_id = m.id " +
+				"WHERE um.message_id IN " + Sql.listPrepared(messagesId.toArray()) + " AND um.user_id = ? AND um.trashed = false AND m.state = 'SENT' " +
+				"GROUP BY user_id, m.thread_id) ON CONFLICT (user_id,thread_id) DO NOTHING";
+		JsonArray values2 = new JsonArray(messagesId).add(user.getUserId());
+
+		SqlStatementsBuilder builder = new SqlStatementsBuilder();
+		builder.prepared(query.toString(), values);
+		builder.prepared(insertUserThread, values2);
+		sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(0, result));
 	}
 
 	@Override
@@ -445,6 +522,16 @@ public class SqlConversationService implements ConversationService{
 
 		SqlStatementsBuilder builder = new SqlStatementsBuilder();
 
+		String decrUnreadThread =
+				"UPDATE conversation.userThreads " +
+				"SET nb_unread = nb_unread - 1 " +
+				"WHERE user_id = ? AND thread_id = (" +
+					"SELECT m.thread_id " +
+					"FROM conversation.usermessages um " +
+					"JOIN conversation.messages m on um.message_id = m.id " +
+					"WHERE um.user_id = ? AND um.message_id = ? AND um.unread = true) " +
+				"AND nb_unread > 0 ";
+
 		String updateQuery = "UPDATE " + userMessageTable + " " +
 			"SET unread = false " +
 			"WHERE user_id = ? AND message_id = ? ";
@@ -466,10 +553,16 @@ public class SqlConversationService implements ConversationService{
 			.add(user.getUserId())
 			.add(messageId);
 
+		final JsonArray tValues = new fr.wseduc.webutils.collections.JsonArray()
+			.add(user.getUserId())
+			.add(user.getUserId())
+			.add(messageId);
+
+		builder.prepared(decrUnreadThread, tValues);
 		builder.prepared(updateQuery, values);
 		builder.prepared(selectQuery, values);
 
-		sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(1, result, "attachments", "to", "toName", "cc", "ccName", "displayNames", "cci", "cciName"));
+		sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(2, result, "attachments", "to", "toName", "cc", "ccName", "displayNames", "cci", "cciName"));
 	}
 
 	@Override
@@ -580,23 +673,40 @@ public class SqlConversationService implements ConversationService{
 	public void toggleUnread(List<String> messagesIds, boolean unread, UserInfos user, Handler<Either<String, JsonObject>> result) {
 		if (validationParamsError(user, result))
 			return;
+		final String getThreadIds = "SELECT thread_id FROM conversation.messages WHERE id IN " + Sql.listPrepared(messagesIds.toArray());
+		sql.prepared(getThreadIds, new JsonArray(messagesIds), SqlResult.validResultHandler(either -> {
+			if (either.isRight()) {
+				SqlStatementsBuilder builder = new SqlStatementsBuilder();
+				JsonArray values = new fr.wseduc.webutils.collections.JsonArray();
+				String query = "UPDATE " + userMessageTable + " " +
+						"SET unread = ? " +
+						"WHERE user_id = ? AND message_id IN "  + Sql.listPrepared(messagesIds.toArray());
 
-		JsonArray values = new fr.wseduc.webutils.collections.JsonArray();
-		String query = "UPDATE " + userMessageTable + " " +
-				"SET unread = ? " +
-				"WHERE user_id = ? AND message_id IN "  + Sql.listPrepared(messagesIds.toArray());
+				values.add(unread);
+				values.add(user.getUserId());
+				for(String id : messagesIds){
+					values.add(id);
+				}
 
-		values.add(unread);
-		values.add(user.getUserId());
-		for(String id : messagesIds){
-			values.add(id);
-		}
+				builder.prepared(query, values);
 
-		sql.prepared(query, values, SqlResult.validUniqueResultHandler(result));
+				final List<String> threadIds = new ArrayList<>();
+				for (Object row: either.right().getValue()) {
+					if (!(row instanceof JsonObject)) continue;
+					threadIds.add(((JsonObject) row).getString("thread_id"));
+				}
+				recalculateNbUnreadInThreads(threadIds, user, builder);
+
+				sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(0, result));
+			} else {
+				result.handle(new Either.Left<>(either.left().getValue()));
+			}
+		}));
 	}
 
 	@Override
 	public void toggleUnreadThread(List<String> threadIds, boolean unread, UserInfos user, Handler<Either<String, JsonObject>> result) {
+		SqlStatementsBuilder builder = new SqlStatementsBuilder();
 		JsonArray values = new fr.wseduc.webutils.collections.JsonArray();
 		StringBuilder query = new StringBuilder(
 				"UPDATE " + userMessageTable + " AS um  " +
@@ -608,9 +718,26 @@ public class SqlConversationService implements ConversationService{
 		query.append(" AND um.user_id = ? AND um.message_id = m.id ");
 		values.add(user.getUserId());
 
-		sql.prepared(query.toString(), values, SqlResult.validUniqueResultHandler(result));
+		builder.prepared(query.toString(), values);
+		recalculateNbUnreadInThreads(threadIds, user, builder);
+		sql.transaction(builder.build(), SqlResult.validUniqueResultHandler(0, result));
 	}
 
+	private void recalculateNbUnreadInThreads(List<String> threadIds, UserInfos user, SqlStatementsBuilder builder) {
+		final String query =
+				"UPDATE conversation.userthreads as ut " +
+				"SET nb_unread = g.unread " +
+				"FROM (" +
+					"SELECT um.user_id as user_id, m.thread_id as thread_id, SUM(CASE WHEN um.unread THEN 1 ELSE 0 END) as unread " +
+					"FROM conversation.usermessages um " +
+					"JOIN conversation.messages m on um.message_id = m.id " +
+					"WHERE m.thread_id IN " + Sql.listPrepared(threadIds.toArray()) + " AND um.user_id = ? AND m.state = 'SENT' " +
+					"GROUP BY user_id, m.thread_id " +
+				") as g " +
+				"WHERE ut.user_id = g.user_id AND ut.thread_id = g.thread_id ";
+
+		builder.prepared(query, new JsonArray(threadIds).add(user.getUserId()));
+	}
 
 	@Override
 	public void createFolder(final String folderName, final String parentFolderId, final UserInfos user,

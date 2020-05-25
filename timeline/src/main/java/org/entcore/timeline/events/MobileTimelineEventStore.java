@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.entcore.common.user.UserInfos;
 
+import fr.wseduc.mongodb.MongoDb;
 import fr.wseduc.webutils.Either;
 import io.vertx.core.Handler;
 import io.vertx.core.json.JsonArray;
@@ -20,11 +21,26 @@ public class MobileTimelineEventStore extends DefaultTimelineEventStore {
     }
 
     @Override
+    protected JsonObject validAndGet(JsonObject event){
+        final JsonObject res = super.validAndGet(event);
+        if(res != null && event.containsKey("_id")){
+            res.put("_id", event.getString("_id"));
+        }
+        return res;
+    }
+
+    @Override
     public void add(final JsonObject event, final Handler<JsonObject> originalResult) {
         if (event.containsKey("preview")) {
-            super.add(event, (res) -> {
-                this.original.add(event, originalResult);
+            this.original.add(event, resOriginal->{
+                if(resOriginal != null){
+                    event.put("_id", resOriginal.getString("_id"));
+                }
+                super.add(event, (res) -> {
+                    originalResult.handle(resOriginal);                    
+                });
             });
+            
         } else {
             this.original.add(event, originalResult);
         }
@@ -48,9 +64,9 @@ public class MobileTimelineEventStore extends DefaultTimelineEventStore {
         //
         final String recipient = user.getUserId();
         if (recipient != null && !recipient.trim().isEmpty()) {
-            final JsonObject query = new JsonObject().put("deleted", new JsonObject().put("$exists", false));
-            // Mobile dont need to limit future events (only actu)
-            // .put("date", new JsonObject().put("$lt", MongoDb.now()));
+            final JsonObject query = new JsonObject().put("deleted", new JsonObject().put("$exists", false))
+            // Mobile dont need to limit future events (only actu)?
+            .put("date", new JsonObject().put("$lt", MongoDb.now()));
             // query sended / received / both
             if (mine) {
                 query.put("sender", recipient);

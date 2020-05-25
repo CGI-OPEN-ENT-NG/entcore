@@ -38,7 +38,7 @@ import java.util.Locale;
 
 public class DefaultTimelineEventStore implements TimelineEventStore {
 
-    private static final String TIMELINE_COLLECTION = "timeline";
+    public static final String TIMELINE_COLLECTION = "timeline";
 
     protected MongoDb mongo = MongoDb.getInstance();
 
@@ -183,7 +183,7 @@ public class DefaultTimelineEventStore implements TimelineEventStore {
         });
     }
 
-    static JsonObject validAndGet(JsonObject json) {
+    protected JsonObject validAndGet(JsonObject json) {
         if (json != null) {
             JsonObject e = json.copy();
             for (String attr: json.fieldNames()) {

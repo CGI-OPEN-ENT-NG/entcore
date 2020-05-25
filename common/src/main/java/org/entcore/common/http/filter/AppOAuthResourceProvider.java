@@ -150,7 +150,11 @@ public class AppOAuthResourceProvider extends DefaultOAuthResourceProvider {
 						request.resume();
 						final JsonObject oauth = resCache.get().getJsonObject("oauth");
 						final JsonObject session = resCache.get().getJsonObject("session");
-						if(session!=null) request.setSession(session);
+						if(session!=null) {
+							//#35187 dont cache the cache attribute (because data could have been changed accross queries)
+							session.put("cache", new JsonObject());
+							request.setSession(session);
+						}
 						handler.handle(new DefaultAsyncResult<>(oauth));
 					}else{
 						cacheOAuthInfos(tokenStr, request, payload, r->{
@@ -170,7 +174,7 @@ public class AppOAuthResourceProvider extends DefaultOAuthResourceProvider {
 	@Override
 	protected boolean customValidation(SecureHttpServerRequest request) {
 		final String scope = request.getAttribute("scope");
-		createStatsEvent(request);
+		// createStatsEvent(request);
 		return isNotEmpty(scope) &&
 				(prefixPattern.matcher(scope).find() ||
 						request.path().contains("/auth/internal/userinfo") ||

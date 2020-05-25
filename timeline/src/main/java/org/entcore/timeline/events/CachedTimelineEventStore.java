@@ -1,6 +1,7 @@
 package org.entcore.timeline.events;
 
 import fr.wseduc.mongodb.MongoDb;
+import fr.wseduc.mongodb.MongoQueryBuilder;
 import fr.wseduc.webutils.Either;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -17,6 +18,8 @@ import org.entcore.timeline.services.TimelineConfigService;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.mongodb.QueryBuilder;
+
 public class CachedTimelineEventStore implements TimelineEventStore {
     private static Logger logger = LoggerFactory.getLogger(CachedTimelineEventStore.class);
     private final Map<String, String> registeredNotifications;
@@ -25,6 +28,7 @@ public class CachedTimelineEventStore implements TimelineEventStore {
     private final CacheService cacheService;
     private final int pageSize;
     private JsonObject externalNotificationsCache;
+    protected MongoDb mongo = MongoDb.getInstance();
 
     private static String getKey(String userId){
         return "timeline:" + userId;
@@ -151,11 +155,17 @@ public class CachedTimelineEventStore implements TimelineEventStore {
             if (res.succeeded()) {
                 final List<String> all = res.result();
                 final Set<String> uniqIds = new HashSet<>();
+                final long now = System.currentTimeMillis();
                 final List<JsonObject> allJson = all.stream().map(json -> new JsonObject(json)).filter(json -> {
                     final String id = json.getString("_id");
                     final boolean alreadyAdded = uniqIds.contains(id);
                     if(alreadyAdded) return false;
                     uniqIds.add(id);
+                    //date filter
+                    final long date = json.getJsonObject("date", new JsonObject()).getLong("$date", now);
+                    if(date > now){
+                        return false;
+                    }
                     //
                     if (types != null && types.size() > 0) {
                         final String type = json.getString("type", "");
@@ -242,23 +252,47 @@ public class CachedTimelineEventStore implements TimelineEventStore {
 
     @Override
     public void delete(String id, String sender, Handler<Either<String, JsonObject>> result) {
-        original.delete(id, sender, result);
+        removeById(id, res->{
+            original.delete(id, sender, result);
+        });
+    }
+
+    protected void removeById(String id, final Handler<Void> handler){
+        mongo.findOne(DefaultTimelineEventStore.TIMELINE_COLLECTION, MongoQueryBuilder.build(QueryBuilder.start("_id").is(id)), message->{
+            //do action
+            handler.handle(null);
+            //then delete from cache
+            final JsonObject body = message.body();
+			if ("ok".equals(body.getString("status"))) {
+                final JsonObject notif = body.getJsonObject("result", new JsonObject());
+                final JsonArray recipients = notif.getJsonArray("recipients", new JsonArray());
+                for(final Object recipient : recipients){
+                    final JsonObject recipientJson = (JsonObject) recipient;
+                    final String recipientId = recipientJson.getString("userId");
+                    removeFromCache(recipientId, id);
+                }
+			}
+        });
+    }
+
+    protected void removeFromCache(String recipient, String id){
+        getListUnfiltered(recipient).setHandler(res->{
+            if(res.succeeded()){
+                final List<JsonObject> jsons = res.result();
+                for(int i = 0 ; i < jsons.size(); i ++){
+                    final JsonObject current = jsons.get(i);
+                    if(id.equals(current.getString("_id"))){
+                        cacheService.removeFromList(getKey(recipient), current.encode(), resR->{});
+                    }
+                }
+            }
+         });
     }
 
     @Override
     public void discard(String id, String recipient, Handler<Either<String, JsonObject>> result) {
         original.discard(id, recipient, result);
-        getListUnfiltered(recipient).setHandler(res->{
-           if(res.succeeded()){
-               final List<JsonObject> jsons = res.result();
-               for(int i = 0 ; i < jsons.size(); i ++){
-                   final JsonObject current = jsons.get(i);
-                   if(id.equals(current.getString("_id"))){
-                       cacheService.removeFromList(getKey(recipient), current.encode(), resR->{});
-                   }
-               }
-           }
-        });
+        removeFromCache(recipient, id);
     }
 
     @Override
@@ -273,7 +307,13 @@ public class CachedTimelineEventStore implements TimelineEventStore {
 
     @Override
     public void performAdminAction(String id, String structureId, UserInfos user, AdminAction action, Handler<Either<String, JsonObject>> result) {
-        original.performAdminAction(id, structureId, user, action, result);
+        if(action == AdminAction.DELETE) {
+            removeById(id, res->{
+                original.performAdminAction(id, structureId, user, action, result);
+            });
+        }else{
+            original.performAdminAction(id, structureId, user, action, result);
+        }
     }
 
     @Override
