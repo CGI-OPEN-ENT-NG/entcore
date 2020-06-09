@@ -26,9 +26,11 @@ import fr.wseduc.security.SecuredAction;
 import fr.wseduc.webutils.Either;
 import fr.wseduc.webutils.I18n;
 import fr.wseduc.webutils.Utils;
+import fr.wseduc.webutils.data.ZLib;
 import fr.wseduc.webutils.http.Renders;
 import fr.wseduc.webutils.request.CookieHelper;
 import fr.wseduc.webutils.security.HmacSha1;
+import io.vertx.core.http.HttpMethod;
 import org.entcore.auth.security.SamlUtils;
 import org.entcore.auth.services.FederationService;
 import org.entcore.auth.services.SamlServiceProvider;
@@ -58,17 +60,21 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathFactory;
+import java.io.IOException;
 import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
 import static fr.wseduc.webutils.Utils.*;
@@ -377,7 +383,6 @@ public class SamlController extends AbstractFederateController {
 	 * @param request
 	 */
 	private void ssoRedirect(String SAMLAuthnRequest, String relayState, HttpServerRequest request) {
-
 		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 		DocumentBuilder builder;
 		try {
@@ -390,7 +395,8 @@ public class SamlController extends AbstractFederateController {
 			UserUtils.getUserInfos(eb, request, new Handler<UserInfos>() {
 				@Override
 				public void handle(final UserInfos user) {
-					ssoGenerateSAML(user, serviceProviderId, relayState,  request);
+					if (user == null) redirectToLogin(request, SAMLAuthnRequest, relayState);
+					else ssoGenerateSAML(user, serviceProviderId, relayState,  request);
 				}
 			});
 		} catch (Exception e) {
@@ -399,10 +405,26 @@ public class SamlController extends AbstractFederateController {
 			log.info(SAMLAuthnRequest);
 			log.info("END SAMLAuthnRequest ------------------------------");
 			log.info("relayState:" + relayState);
-			redirect(request,"");
+			renderError(request, new JsonObject().put("error", "Exception catches during SAML sso redirect"));
 			log.error("Can't generate SAML response from provider ", e);
-
 		}
+	}
+
+	private void redirectToLogin(HttpServerRequest request, String SAMLAuthnRequest, String relayState) {
+		String path = "/auth/saml/redirect/sso/?SAMLRequest=%s&RelayState=%s";
+		String location = "";
+		try {
+			String authnRequestB64 = URLEncoder.encode(ZLib.deflateAndEncode(SAMLAuthnRequest), StandardCharsets.UTF_8.toString());
+			String rs = URLEncoder.encode(relayState, StandardCharsets.UTF_8.toString());
+			String callback = URLEncoder.encode(String.format(path, authnRequestB64, rs), StandardCharsets.UTF_8.toString());
+			location = String.format("/auth/login?callback=%s", callback);
+		} catch (UnsupportedEncodingException e) {
+			log.error("Encoding exception in redirectToLogin method", e);
+		} catch (IOException e) {
+			log.error("IOException during deflating and encoding SAMLAuthnRequest: " + SAMLAuthnRequest, e);
+		}
+
+		redirect(request, location);
 	}
 
 	/**
