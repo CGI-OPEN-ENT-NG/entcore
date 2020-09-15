@@ -2307,21 +2307,23 @@ window.RTE = (function () {
 				}
 			});
 
-			RTE.baseToolbarConf.option('embed', function (instance) {
-				return {
-					template: '<i ng-click="display.copyEmbed = true" tooltip="editor.option.embed"></i>' +
-						'<embedder ng-model="display.htmlCode" on-change="applyHtml()" show="display.copyEmbed"></embedder>',
-					link: function (scope, element, attributes) {
-						scope.display = {
-							htmlCode: ''
-						};
+			if(scope.embedActive) {
+				RTE.baseToolbarConf.option('embed', function (instance) {
+					return {
+						template: '<i ng-click="display.copyEmbed = true" tooltip="editor.option.embed"></i>' +
+							'<embedder ng-model="display.htmlCode" on-change="applyHtml()" show="display.copyEmbed"></embedder>',
+						link: function (scope, element, attributes) {
+							scope.display = {
+								htmlCode: ''
+							};
 
-						scope.applyHtml = function (template) {
-							instance.selection.replaceHTML(scope.display.htmlCode);
-						};
+							scope.applyHtml = function (template) {
+								instance.selection.replaceHTML(scope.display.htmlCode);
+							};
+						}
 					}
-				}
-			});
+				});
+			}
 
 			RTE.baseToolbarConf.option('mathjax', function (instance) {
 				return {
@@ -3062,6 +3064,9 @@ window.RTE = (function () {
 			module.directive('editor', function ($parse, $compile) {
 				return {
 					restrict: 'E',
+					scope: {
+						embedActive: "@"
+					},
 					template: '' +
 						'<button type="button" class="editor-toolbar-opener"></button>' +
 						'<button type="button" class="close-focus">OK</button>' +
