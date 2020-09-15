@@ -2307,7 +2307,7 @@ window.RTE = (function () {
 				}
 			});
 
-			if(scope.embedActive) {
+			if(!scope.hiddenShareVideoCode) {
 				RTE.baseToolbarConf.option('embed', function (instance) {
 					return {
 						template: '<i ng-click="display.copyEmbed = true" tooltip="editor.option.embed"></i>' +
@@ -3065,7 +3065,7 @@ window.RTE = (function () {
 				return {
 					restrict: 'E',
 					scope: {
-						embedActive: "@"
+						hiddenShareVideoCode: "@"
 					},
 					template: '' +
 						'<button type="button" class="editor-toolbar-opener"></button>' +
