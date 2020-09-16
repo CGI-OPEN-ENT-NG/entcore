@@ -2307,8 +2307,8 @@ window.RTE = (function () {
 				}
 			});
 
-			if(!scope.hiddenShareVideoCode) {
-				RTE.baseToolbarConf.option('embed', function (instance) {
+			RTE.baseToolbarConf.option('embed', function (instance) {
+				if(!instance.element.attr('hiddenShareVideoCode')) {
 					return {
 						template: '<i ng-click="display.copyEmbed = true" tooltip="editor.option.embed"></i>' +
 							'<embedder ng-model="display.htmlCode" on-change="applyHtml()" show="display.copyEmbed"></embedder>',
@@ -2322,8 +2322,17 @@ window.RTE = (function () {
 							};
 						}
 					}
-				});
-			}
+				}else{
+					return {
+						template: '',
+						link: function (scope, element, attributes) {
+							scope.display = {
+								htmlCode: ''
+							};
+						}
+					}
+				}
+			});
 
 			RTE.baseToolbarConf.option('mathjax', function (instance) {
 				return {
@@ -3064,9 +3073,6 @@ window.RTE = (function () {
 			module.directive('editor', function ($parse, $compile) {
 				return {
 					restrict: 'E',
-					scope: {
-						hiddenShareVideoCode: "@"
-					},
 					template: '' +
 						'<button type="button" class="editor-toolbar-opener"></button>' +
 						'<button type="button" class="close-focus">OK</button>' +
