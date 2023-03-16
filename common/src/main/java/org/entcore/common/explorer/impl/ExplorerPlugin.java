@@ -23,7 +23,6 @@ import org.entcore.common.explorer.IdAndVersion;
 import org.entcore.common.explorer.IngestJobState;
 import org.entcore.common.explorer.to.MuteRequest;
 import org.entcore.common.explorer.to.MuteResponse;
-import org.entcore.common.mute.MuteService;
 import org.entcore.common.share.ShareService;
 import org.entcore.common.share.impl.MongoDbShareService;
 import org.entcore.common.share.impl.SqlShareService;
@@ -598,7 +597,6 @@ public abstract class ExplorerPlugin implements IExplorerPlugin {
     protected abstract String getResourceType();
 
     protected abstract Optional<ShareService> getShareService();
-    protected abstract MuteService getMuteService();
 
     protected abstract void doFetchForIndex(final ExplorerStream<JsonObject> stream, final Optional<Date> from, final Optional<Date> to);
 

@@ -18,8 +18,7 @@ public class ExplorerMessage {
     public enum ExplorerAction{
         Upsert(ExplorerPriority.High),
         Delete(ExplorerPriority.High),
-        Audience(ExplorerPriority.Low),
-        Mute(ExplorerPriority.Low);
+        Audience(ExplorerPriority.Low);
         private final ExplorerPriority priority;
         ExplorerAction(final ExplorerPriority i){
             this.priority = i;
