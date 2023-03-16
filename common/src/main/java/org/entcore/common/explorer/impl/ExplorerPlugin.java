@@ -120,28 +120,6 @@ public abstract class ExplorerPlugin implements IExplorerPlugin {
         }
     }
 
-    private void onMuteRequest(UserInfos user, Message<JsonObject> message) {
-        final MuteRequest muteRequest = message.body().mapTo(MuteRequest.class);
-        final MuteService muteService = getMuteService();
-        muteService.setMuteStatus(muteRequest, user).onComplete(e -> {
-            if(e.succeeded()) {
-                message.reply(mapFrom(new MuteResponse(true)));
-                for (IdAndVersion resourceId : muteRequest.getResourceIds()) {
-                    final ExplorerMessage muteChangeNotification = ExplorerMessage.mute(
-                            resourceId,
-                            getApplication(), getResourceType(),
-                            muteRequest.isMute(), user
-                    );
-                    this.notifyMute(muteChangeNotification);
-                }
-            } else {
-                log.error("An error occurred while setting the muste status of the following resources " +
-                        muteRequest.getResourceIds() + " for the user " + user.getUserId(), e.cause());
-                message.reply(mapFrom(new MuteResponse(false, e.cause())));
-            }
-        });
-    }
-
     protected void onCreateAction(final Message<JsonObject> message, final UserInfos user, final JsonArray values, final boolean copy){
         final long now = currentTimeMillis();
         final List<JsonObject> jsons = values.stream().filter(e -> e instanceof JsonObject).map(e -> (JsonObject) e).collect(Collectors.toList());
@@ -454,12 +432,6 @@ public abstract class ExplorerPlugin implements IExplorerPlugin {
         }
         return communication.pushMessage(messages);
     }
-
-    @Override
-    public Future<Void> notifyMute(final ExplorerMessage message) {
-        return communication.pushMessage(Collections.singletonList(message));
-    }
-
 
     @Override
     public Future<Void> notifyDeleteById(final UserInfos user, final IdAndVersion id) {
