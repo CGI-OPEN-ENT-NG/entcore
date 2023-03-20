@@ -353,6 +353,13 @@ public class ExplorerMessage {
     public void setIdQueue(String idQueue) {
         this.idQueue = idQueue;
     }
+    public JsonObject getMute() {
+        final JsonObject mute = this.message.getJsonObject("mute");
+        if(mute == null) {
+            return new JsonObject();
+        }
+        return mute;
+    }
 
     @Override
     public String toString() {
