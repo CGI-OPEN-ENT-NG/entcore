@@ -173,6 +173,11 @@ public class ExplorerMessage {
         return this;
     }
 
+    public ExplorerMessage withMute(String userId, boolean mute) {
+        message.put("mute", new JsonObject().put(userId, mute));
+        return this;
+    }
+
     public ExplorerMessage withForceApplication(final String application) {
         message.put("application", application);
         return this;
