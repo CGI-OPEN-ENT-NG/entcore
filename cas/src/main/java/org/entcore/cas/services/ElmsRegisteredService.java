@@ -82,7 +82,8 @@ public class ElmsRegisteredService extends AbstractCas20ExtensionRegisteredServi
                     prepareUser(user, userId, service, userData);
                     userHandler.handle(user);
                 }).onFailure((err) -> {
-                    log.error("[entcore-CAS] Failed to get User for eLMS", err);
+                    log.error(String.format("[entcoreCAS@%s::getUser] " +
+                            "Failed to get User for eLMS. %s", this.getClass().getName(), err.getMessage()));
                     userHandler.handle(null);
                 });
     }
