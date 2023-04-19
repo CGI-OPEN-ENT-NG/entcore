@@ -53,7 +53,7 @@ public class ElmsRegisteredService extends AbstractCas20ExtensionRegisteredServi
             if (OK.equals(event.body().getString(STATUS)) && res != null) {
                 promise.complete(res);
             } else {
-                promise.fail("User not found");
+                promise.fail("user.not.found");
             }
         }));
         return promise.future();
