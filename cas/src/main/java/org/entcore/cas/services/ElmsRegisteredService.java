@@ -65,25 +65,26 @@ public class ElmsRegisteredService extends AbstractCas20ExtensionRegisteredServi
         Future<JsonObject> getUserFuture = getUserInfos(userId);
         Future<JsonObject> isInGroupFuture = isInGroup(userId, new ArrayList<>(authCas.getStructureIds()));
 
-        CompositeFuture.all(getUserFuture, isInGroupFuture).onSuccess((res) -> {
-            JsonObject data = getUserFuture.result();
-            JsonObject inGroups = isInGroupFuture.result();
+        CompositeFuture.all(getUserFuture, isInGroupFuture)
+                .onSuccess((res) -> {
+                    JsonObject data = getUserFuture.result();
+                    JsonObject inGroups = isInGroupFuture.result();
 
-            User user = new User();
-            JsonObject userData = new JsonObject()
-                    .put(ID, data.getString(ID))
-                    .put(FIRSTNAME, data.getString(FIRSTNAME))
-                    .put(LASTNAME, data.getString(LASTNAME))
-                    .put(TYPE, data.getString(TYPE))
-                    .put(STRUCTURES, data.getJsonArray(STRUCTURES))
-                    .put(IN_GAR_GROUPS, inGroups)
-                    .put(GROUPS, data.getJsonArray(GROUPS));
-            prepareUser(user, userId, service, userData);
-            userHandler.handle(user);
-        }).onFailure((err) -> {
-            log.error("[entcore-CAS] Failed to get User for eLMS", err);
-            userHandler.handle(null);
-        });
+                    User user = new User();
+                    JsonObject userData = new JsonObject()
+                            .put(ID, data.getString(ID))
+                            .put(FIRSTNAME, data.getString(FIRSTNAME))
+                            .put(LASTNAME, data.getString(LASTNAME))
+                            .put(TYPE, data.getString(TYPE))
+                            .put(STRUCTURES, data.getJsonArray(STRUCTURES))
+                            .put(IN_GAR_GROUPS, inGroups)
+                            .put(GROUPS, data.getJsonArray(GROUPS));
+                    prepareUser(user, userId, service, userData);
+                    userHandler.handle(user);
+                }).onFailure((err) -> {
+                    log.error("[entcore-CAS] Failed to get User for eLMS", err);
+                    userHandler.handle(null);
+                });
     }
 
     @Override
@@ -117,7 +118,8 @@ public class ElmsRegisteredService extends AbstractCas20ExtensionRegisteredServi
                 if (structNode != null) {
                     Element rootElement = createElement(STRUCTURE, doc);
                     rootElement.appendChild(createTextElement(UAI, structNode.getString(UAI), doc));
-                    boolean inGroup = inGroups.getBoolean(structNode.getString(ID)) != null ? inGroups.getBoolean(structNode.getString(ID)) : false;
+                    boolean inGroup = inGroups.getBoolean(structNode.getString(ID))
+                            != null && inGroups.getBoolean(structNode.getString(ID));
                     rootElement.appendChild(createTextElement(IN_GAR_GROUP, String.valueOf(inGroup), doc));
 
                     if (data.getJsonArray(GROUPS) != null) {
@@ -151,7 +153,8 @@ public class ElmsRegisteredService extends AbstractCas20ExtensionRegisteredServi
                 return;
             }
 
-            log.error("Failed to retrieve gar resources", event.body().getString(MESSAGE));
+            log.error(String.format("[entcoreCAS@%s::isInGroup] " +
+                    "Failed to retrieve gar resources. %s", this.getClass().getName(), event.body().getString(MESSAGE, "")));;
             promise.complete(new JsonObject());
         }));
 
