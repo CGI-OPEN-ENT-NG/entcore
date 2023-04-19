@@ -4,6 +4,8 @@ import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.Tuple;
+import static java.lang.Long.parseLong;
+import io.vertx.core.CompositeFuture;
 import org.entcore.common.explorer.ExplorerStream;
 import org.entcore.common.explorer.IExplorerPluginCommunication;
 import org.entcore.common.explorer.IngestJobState;
@@ -16,16 +18,22 @@ import org.entcore.common.user.UserInfos;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
-
-import static java.lang.Long.parseLong;
 
 public abstract class ExplorerPluginResourceSql extends ExplorerPluginResource {
     protected final IPostgresClient pgPool;
     protected List<String> defaultColumns = Arrays.asList("version", "ingest_job_state");
 
-    protected ExplorerPluginResourceSql(final IExplorerPluginCommunication communication, final IPostgresClient pool) {
+    protected ExplorerPluginResourceSql(final IExplorerPluginCommunication communication,
+                                        final IPostgresClient pool) {
         super(communication);
         this.pgPool = pool;
     }
@@ -42,12 +50,28 @@ public abstract class ExplorerPluginResourceSql extends ExplorerPluginResource {
     }
 
     @Override
-    protected UserInfos getCreatorForModel(final JsonObject json) { final String id = json.getString(getCreatorIdColumn());
+    protected Optional<UserInfos> getCreatorForModel(final JsonObject json) {
+        if(!json.containsKey(getCreatorIdColumn())){
+            return Optional.empty();
+        }
+        final String id = json.getString(getCreatorIdColumn());
         final String name = json.getString(getCreatorNameColumn());
         final UserInfos user = new UserInfos();
         user.setUserId(id);
         user.setUsername(name);
-        return user;
+        return Optional.ofNullable(user);
+    }
+
+    @Override
+    protected Date getCreatedAtForModel(final JsonObject json) {
+        final Object value = json.getValue(getCreatedAtColumn());
+        if(value != null && value instanceof String){
+            final LocalDateTime localDate = LocalDateTime.parse((String) value);
+            final Date date = Date.from(localDate.atZone(ZoneId.systemDefault()).toInstant());
+            return date;
+        }
+        // return a default value => application should override it if createdAt field is specific
+        return new Date();
     }
 
     @Override
@@ -112,9 +136,11 @@ public abstract class ExplorerPluginResourceSql extends ExplorerPluginResource {
     @Override
     protected Future<List<String>> doCreate(final UserInfos user, final List<JsonObject> sources, final boolean isCopy) {
         final Map<String, Object> map = new HashMap<>();
-        map.put(getCreatorIdColumn(), user.getUserId());
-        map.put(getCreatorNameColumn(), user.getUsername());
-        setIngestJobState(sources, IngestJobState.TO_BE_SENT);
+        for(final JsonObject source : sources){
+            setCreatorForModel(user, source);
+            setCreatedAtForModel(user, source);
+            source.put("ingest_job_state", IngestJobState.TO_BE_SENT);
+        }
         final List<String> columnNames = new ArrayList<>(getColumns());
         columnNames.addAll(defaultColumns);
         final String inPlaceholder = PostgresClient.insertPlaceholders(sources, 1, columnNames);
@@ -162,6 +188,14 @@ public abstract class ExplorerPluginResourceSql extends ExplorerPluginResource {
     }
 
     //overridable
+    protected void setCreatorForModel(final UserInfos user, final JsonObject json){
+        json.put(getCreatorIdColumn(), user.getUserId());
+        json.put(getCreatorNameColumn(), user.getUsername());
+    }
+    protected void setCreatedAtForModel(final UserInfos user, final JsonObject json){
+        json.put(getCreatedAtColumn(), new Date().getTime());
+    }
+
     protected int getBatchSize() { return 50; }
 
     protected String getCreatedAtColumn() {
@@ -210,20 +244,23 @@ public abstract class ExplorerPluginResourceSql extends ExplorerPluginResource {
     }
 
     @Override
-    public void onJobStateUpdatedMessageReceived(final IngestJobStateUpdateMessage message) {
+    public Future<Void> onJobStateUpdatedMessageReceived(final List<IngestJobStateUpdateMessage> messages) {
+        if(messages.isEmpty()){
+            return Future.succeededFuture();
+        }
         final String schema = getTableName();
-        final String query = new StringBuilder()
-            .append(" UPDATE ").append(schema)
-            .append(" SET ingest_job_state = $1, version = $2 WHERE id = $3 AND version <= $2")
-            .toString();
-        final Tuple tuple = Tuple.tuple()
-                .addValue(message.getState().name())
-                .addValue(message.getVersion())
-                .addValue(parseLong(message.getEntityId()));
-        pgPool.preparedQuery(query.toString(),tuple).onSuccess(result -> {
-            log.debug("Successfully updated state of resource " + message);
-        }).onFailure(e->{
-            log.error("Failed to update state of resource " + message, e);
-        });
+        final List<Future> futures = new ArrayList<Future>();
+        for(IngestJobStateUpdateMessage message : messages) {
+            final String query = new StringBuilder()
+                    .append(" UPDATE ").append(schema)
+                    .append(" SET ingest_job_state = $1, version = $2 WHERE id = $3 AND version <= $2")
+                    .toString();
+            final Tuple tuple = Tuple.tuple();
+            tuple.addValue(message.getState().name())
+                    .addValue(message.getVersion())
+                    .addValue(parseLong(message.getEntityId()));
+            futures.add(pgPool.preparedQuery(query, tuple));
+        }
+        return CompositeFuture.all(futures).mapEmpty();
     }
 }

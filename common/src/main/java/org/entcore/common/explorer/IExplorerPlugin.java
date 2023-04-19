@@ -11,6 +11,7 @@ import org.entcore.common.user.UserInfos;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 public interface IExplorerPlugin {
@@ -43,17 +44,33 @@ public interface IExplorerPlugin {
 
     Future<Map<String, JsonArray>> getShareInfo(Set<String> id);
 
-    Future<Void> notifyShare(String id, UserInfos user, JsonArray shared);
+    Future<Void> notifyShare(IdAndVersion id, UserInfos user, JsonArray shared);
 
-    Future<Void> notifyShare(Set<String> id, UserInfos user, JsonArray shared);
+    Future<Void> notifyShare(Set<IdAndVersion> id, UserInfos user, JsonArray shared);
 
-    Future<Void> notifyUpsert(String id, UserInfos user, JsonObject source);
+    default Future<Void> notifyUpsert(IdAndVersion id, UserInfos user, JsonObject source){
+        return notifyUpsert(id, user, source, Optional.empty());
+    }
 
-    Future<Void> notifyUpsert(UserInfos user, Map<String, JsonObject> sourceById);
+    default Future<Void> notifyUpsert(UserInfos user, Map<String, JsonObject> sourceById){
+        return notifyUpsert(user, sourceById, Optional.empty());
+    }
 
-    Future<Void> notifyUpsert(UserInfos user, JsonObject source);
+    default Future<Void> notifyUpsert(UserInfos user, JsonObject source){
+        return notifyUpsert(user, source, Optional.empty());
+    }
 
-    Future<Void> notifyUpsert(UserInfos user, List<JsonObject> sources);
+    default Future<Void> notifyUpsert(UserInfos user, List<JsonObject> sources){
+        return notifyUpsert(user, sources, Optional.empty());
+    }
+
+    Future<Void> notifyUpsert(IdAndVersion id, UserInfos user, JsonObject source, Optional<Number> folderId);
+
+    Future<Void> notifyUpsert(UserInfos user, Map<String, JsonObject> sourceById, Optional<Number> folderId);
+
+    Future<Void> notifyUpsert(UserInfos user, JsonObject source, Optional<Number> folderId);
+
+    Future<Void> notifyUpsert(UserInfos user, List<JsonObject> sources, Optional<Number> folderId);
 
     Future<Void> notifyUpsert(ExplorerMessage m);
 
@@ -67,9 +84,17 @@ public interface IExplorerPlugin {
 
     Future<Void> notifyDelete(UserInfos user, List<JsonObject> sources);
 
-    Future<String> create(UserInfos user, JsonObject source, boolean isCopy);
+    default Future<String> create(UserInfos user, JsonObject source, boolean isCopy){
+        return create(user, source, isCopy, Optional.empty());
+    }
 
-    Future<List<String>> create(UserInfos user, List<JsonObject> sources, boolean isCopy);
+    Future<String> create(UserInfos user, JsonObject source, boolean isCopy, Optional<Number> folderId);
+
+    default Future<List<String>> create(UserInfos user, List<JsonObject> sources, boolean isCopy){
+        return create(user, sources, isCopy, Optional.empty());
+    }
+
+    Future<List<String>> create(UserInfos user, List<JsonObject> sources, boolean isCopy, Optional<Number> folderId);
 
     Future<Boolean> delete(UserInfos user, String id);
 
@@ -101,13 +126,18 @@ public interface IExplorerPlugin {
         setVersion(source, version);
     }
 
-    void onJobStateUpdatedMessageReceived(final IngestJobStateUpdateMessage message);
+    /**
+     * Methods call by Ingest Job to notify a plugin that a batch of messages have a status update.
+     * @param messages Messages whose status has changed
+     * @return A future which will succeed if all messages are ack-ed, false otherwise
+     */
+    Future<Void> onJobStateUpdatedMessageReceived(final List<IngestJobStateUpdateMessage> messages);
     enum ExplorerRemoteAction {
         QueryReindex,
         QueryCreate,
         QueryDelete,
         QueryShare,
-        QueryMetrics,
+        QueryMetrics
     }
 
     enum ExplorerRemoteError {

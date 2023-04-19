@@ -10,7 +10,12 @@ import org.entcore.common.explorer.IExplorerPluginClient;
 import org.entcore.common.user.UserInfos;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public abstract class ExplorerPluginClient implements IExplorerPluginClient {
@@ -118,6 +123,7 @@ public abstract class ExplorerPluginClient implements IExplorerPluginClient {
     }
 
     abstract protected <T> Future<T> send(final MultiMap headers, final JsonObject payload, final Duration timeout);
+    abstract protected <T> Future<T> send(final MultiMap headers, final Object payload, Class<T> responseType, final Duration timeout);
 
 
 }

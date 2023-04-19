@@ -2,16 +2,13 @@ package org.entcore.common.explorer;
 
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import org.entcore.common.share.ShareModel;
 import org.entcore.common.user.UserInfos;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class ExplorerMessage {
-
 
     public enum ExplorerContentType{
         Text, Html, Pdf
@@ -51,6 +48,11 @@ public class ExplorerMessage {
     private final ExplorerPriority priority;
     private String idQueue;
 
+    public static String CONTENT_KEY = "content";
+    public static String CONTENT_HTML_KEY = "contentHtml";
+    public static String CONTENT_PDF_KEY = "contentPdf";
+    public static String SUBRESOURCES_KEY = "subresources";
+
     public ExplorerMessage(final String id, final String action, final ExplorerPriority priority) {
         this.id = id;
         this.action = action;
@@ -62,14 +64,15 @@ public class ExplorerMessage {
         this.priority = action.getPriority(search);
     }
 
-    public static ExplorerMessage upsert(final String id, final UserInfos user, final boolean forSearch) {
-        final ExplorerMessage builder = new ExplorerMessage(id, ExplorerAction.Upsert, forSearch);
-        builder.message.put("createdAt", new Date().getTime());
-        builder.message.put("creatorId", user.getUserId());
-        builder.message.put("creatorName", user.getUsername());
+    public static ExplorerMessage upsert(final IdAndVersion id, final UserInfos user, final boolean forSearch,
+                                         final String application, final String resourceType, final String entityType) {
+        final ExplorerMessage builder = new ExplorerMessage(id.getId(), ExplorerAction.Upsert, forSearch);
+        // dont set creator and createdat here, set it from resource json
         builder.message.put("updatedAt", new Date().getTime());
         builder.message.put("updaterId", user.getUserId());
         builder.message.put("updaterName", user.getUsername());
+        builder.withVersion(id.getVersion());
+        builder.withType(application, resourceType, entityType);
         return builder;
     }
 
@@ -80,6 +83,27 @@ public class ExplorerMessage {
         builder.message.put("deleterId", user.getUserId());
         builder.message.put("deleterName", user.getUsername());
         return builder;
+    }
+
+    public ExplorerMessage withCreator(final UserInfos user){
+        withCreatorId(user.getUserId());
+        withCreatorName(user.getUsername());
+        return this;
+    }
+
+    public ExplorerMessage withCreatedAt(final Date date){
+        message.put("createdAt", date.getTime());
+        return this;
+    }
+
+    public ExplorerMessage withCreatorId(final String id){
+        message.put("creatorId", id);
+        return this;
+    }
+
+    public ExplorerMessage withCreatorName(final String name){
+        message.put("creatorName", name);
+        return this;
     }
 
     public ExplorerMessage withParentId(final Optional<Long> parentId) {
@@ -129,6 +153,11 @@ public class ExplorerMessage {
         return this;
     }
 
+    public ExplorerMessage withDescription(final String description){
+        message.put("description", description);
+        return this;
+    }
+
     public ExplorerMessage withType(final String application, final String resourceType, final String entityType) {
         message.put("application", application);
         message.put("resourceType", resourceType);
@@ -137,6 +166,16 @@ public class ExplorerMessage {
     }
     public ExplorerMessage withVersion(Long version) {
         message.put("version", version);
+        return this;
+    }
+
+    public ExplorerMessage withMute(String userId, boolean mute) {
+        message.put("mute", new JsonObject().put(userId, mute));
+        return this;
+    }
+
+    public ExplorerMessage withTrashedBy(List<String> trashedBy) {
+        message.put("trashedBy", new JsonArray(trashedBy));
         return this;
     }
 
@@ -156,14 +195,14 @@ public class ExplorerMessage {
         }
         switch(type){
             case Pdf:
-                message.put("contentPdf", text);
+                message.put(CONTENT_PDF_KEY, text);
                 break;
             case Html:
-                message.put("contentHtml", text);
+                message.put(CONTENT_HTML_KEY, text);
                 break;
             case Text:
             default:
-                message.put("content", text);
+                message.put(CONTENT_KEY, text);
                 break;
         }
         return this;
@@ -180,56 +219,63 @@ public class ExplorerMessage {
     }
 
     public ExplorerMessage withSubResourceContent(final String id, final String content, final ExplorerContentType type) {
-        final JsonArray subResources = message.getJsonArray("subresources", new JsonArray());
+        final JsonArray subResources = message.getJsonArray(SUBRESOURCES_KEY, new JsonArray());
         final Optional<JsonObject> subResourceOpt = subResources.stream().map(e -> (JsonObject)e).filter(e-> e.getString("id","").equals(id)).findFirst();
         final JsonObject subResource = subResourceOpt.orElse(new JsonObject().put("id", id));
         switch(type){
             case Pdf:
-                subResource.put("contentPdf", content);
+                subResource.put(CONTENT_PDF_KEY, content);
                 break;
             case Html:
-                subResource.put("contentHtml", content);
+                subResource.put(CONTENT_HTML_KEY, content);
                 break;
             case Text:
             default:
-                subResource.put("content", content);
+                subResource.put(CONTENT_KEY, content);
                 break;
         }
         subResource.put("deleted", false);
         subResources.add(subResource);
-        message.put("subresources", subResources);
+        message.put(SUBRESOURCES_KEY, subResources);
         return this;
     }
 
     public ExplorerMessage withSubResources(final JsonArray subResources) {
-        message.put("subresources", subResources);
+        message.put(SUBRESOURCES_KEY, subResources);
         return this;
     }
 
     public ExplorerMessage withSubResource(final String id, final boolean deleted) {
-        final JsonArray subResources = message.getJsonArray("subresources", new JsonArray());
+        final JsonArray subResources = message.getJsonArray(SUBRESOURCES_KEY, new JsonArray());
         final Optional<JsonObject> subResourceOpt = subResources.stream().map(e -> (JsonObject)e).filter(e-> e.getString("id","").equals(id)).findFirst();
         final JsonObject subResource = subResourceOpt.orElse(new JsonObject().put("id", id));
         subResource.put("deleted", deleted);
         subResources.add(subResource);
-        message.put("subresources", subResources);
+        message.put(SUBRESOURCES_KEY, subResources);
         return this;
     }
 
     public ExplorerMessage withSubResourceHtml(final String id, final String content, final long version) {
-        final JsonArray subResources = message.getJsonArray("subresources", new JsonArray());
+        final JsonArray subResources = message.getJsonArray(SUBRESOURCES_KEY, new JsonArray());
         final Optional<JsonObject> subResourceOpt = subResources.stream().map(e -> (JsonObject)e).filter(e-> e.getString("id","").equals(id)).findFirst();
         final JsonObject subResource = subResourceOpt.orElse(new JsonObject().put("id", id));
-        subResource.put("contentHtml", content);
+        subResource.put(CONTENT_HTML_KEY, content);
         subResource.put("deleted", false);
         subResource.put("version", version);
         subResources.add(subResource);
-        message.put("subresources", subResources);
+        message.put(SUBRESOURCES_KEY, subResources);
         return this;
     }
 
-    public ExplorerMessage withShared(final JsonArray shared) {
-        message.put("shared", shared);
+    public ExplorerMessage withShared(final ShareModel shareModel) {
+        message.put("rights", new JsonArray(shareModel.getSerializedRights()));
+        return this;
+    }
+
+    @Deprecated
+    public ExplorerMessage withShared(final JsonArray shared, final List<String> rights) {
+        // dont need to push shared to explorer
+        message.put("rights", new JsonArray(rights));
         return this;
     }
 
@@ -275,14 +321,26 @@ public class ExplorerMessage {
     public Optional<JsonArray> getOptionalShared() {
         return Optional.ofNullable(message.getJsonArray("shared"));
     }
+    public Optional<JsonArray> getOptionalRights() {
+        return Optional.ofNullable(message.getJsonArray("rights"));
+    }
     public JsonArray getShared() {
         return message.getJsonArray("shared", new JsonArray());
     }
+    public JsonArray getRights() {
+        return message.getJsonArray("rights", new JsonArray());
+    }
     public String getCreatorId() {
-        return message.getString("creatorId");
+        return message.getString("creatorId", "");
+    }
+    public String getUpdaterId() {
+        return message.getString("updaterId", "");
     }
     public String getName() {
         return message.getString("name");
+    }
+    public long getVersion() {
+        return message.getLong("version");
     }
     public String getCreatorName() {
         return message.getString("creatorName");
@@ -312,10 +370,24 @@ public class ExplorerMessage {
         return getId()+":"+getApplication()+":"+getResourceType();
     }
     public JsonArray getSubresources() {
-        return this.message.getJsonArray("subresources", new JsonArray());
+        return this.message.getJsonArray(SUBRESOURCES_KEY, new JsonArray());
     }
     public void setIdQueue(String idQueue) {
         this.idQueue = idQueue;
+    }
+    public JsonObject getMute() {
+        final JsonObject mute = this.message.getJsonObject("mute");
+        if(mute == null) {
+            return new JsonObject();
+        }
+        return mute;
+    }
+    public JsonArray getTrashedBy() {
+        final JsonArray trashedBy = this.message.getJsonArray("trashedBy");
+        if (trashedBy == null) {
+            return new JsonArray();
+        }
+        return trashedBy;
     }
 
     @Override

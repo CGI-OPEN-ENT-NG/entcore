@@ -204,13 +204,13 @@ project(':common') {
     compile "fr.wseduc:vertx-swift-client:$vertxSwiftClientVersion"
     compile "joda-time:joda-time:$jodaTimeVersion"
     compile "io.vertx:vertx-redis-client:$vertxVersion"
-    compile "com.ongres.scram:client:$scramClientVersion"
     compile "io.vertx:vertx-pg-client:$vertxVersion"
+    compile "com.ongres.scram:client:$scramVersion"
     compile "org.mongodb:mongodb-driver-async:$mongoVersion"
     compile ("io.vertx:vertx-mongo-client:$vertxVersion") {
       exclude group: 'org.mongodb', module: 'mongodb-driver-async'
     }
-    compile "io.vertx:vertx-micrometer-metrics:$micrometerMetricsVersion"
+    compile "io.vertx:vertx-micrometer-metrics:$vertxVersion"
     compile "io.micrometer:micrometer-registry-prometheus:$micrometerPrometheusVersion"
     testCompile project(':test')
   }

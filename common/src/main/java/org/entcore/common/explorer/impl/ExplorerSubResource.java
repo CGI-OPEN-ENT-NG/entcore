@@ -5,14 +5,22 @@ import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import org.entcore.common.explorer.*;
+import static java.lang.System.currentTimeMillis;
+import org.entcore.common.explorer.ExplorerMessage;
+import org.entcore.common.explorer.ExplorerStream;
+import org.entcore.common.explorer.IExplorerPlugin;
+import org.entcore.common.explorer.IExplorerPluginCommunication;
+import org.entcore.common.explorer.IExplorerSubResource;
+import org.entcore.common.explorer.IdAndVersion;
 import org.entcore.common.user.UserInfos;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static java.lang.System.currentTimeMillis;
 
 // TODO JBER so far we have considered that every delete version can be set to now but that is not necessarily true
 // We should get it from outside of these functions
@@ -46,7 +54,8 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
 
     @Override
     public Future<Void> notifyUpsert(final String id, final UserInfos user, final JsonObject source) {
-        final ExplorerMessage message = ExplorerMessage.upsert(id, user, isForSearch()).withType(getApplication(), getResourceType(), getEntityType());
+        final ExplorerMessage message = ExplorerMessage.upsert(
+                new IdAndVersion(id, getVersion(source)), user, isForSearch(), getApplication(), getResourceType(), getEntityType());
         return toMessage(message, source).compose(messages -> {
             return getCommunication().pushMessage(messages);
         });
@@ -56,7 +65,8 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
     public Future<Void> notifyUpsert(final UserInfos user, final Map<String, JsonObject> sourceById) {
         final List<Future> futures = sourceById.entrySet().stream().map(e->{
             final String id = e.getKey();
-            final ExplorerMessage message = ExplorerMessage.upsert(id, user, isForSearch()).withType(getApplication(), getResourceType(), getEntityType());
+            final ExplorerMessage message = ExplorerMessage.upsert(
+                    new IdAndVersion(id, getVersion(e.getValue())), user, isForSearch(), getApplication(), getResourceType(), getEntityType());
             return toMessage(message, e.getValue());
         }).collect(Collectors.toList());
         return CompositeFuture.all(futures).compose(all->{
@@ -67,7 +77,9 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
 
     @Override
     public Future<Void> notifyUpsert(final UserInfos user, final JsonObject source) {
-        final ExplorerMessage message = ExplorerMessage.upsert(getParentId(source), user, isForSearch()).withType(getApplication(), getResourceType(), getEntityType());
+        final ExplorerMessage message = ExplorerMessage.upsert(
+                new IdAndVersion(getParentId(source), getVersion(source)), user, isForSearch(),
+                getApplication(), getResourceType(), getEntityType());
         return toMessage(message, source).compose(messages -> {
             return getCommunication().pushMessage(messages);
         });
@@ -76,7 +88,9 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
     @Override
     public Future<Void> notifyUpsert(final UserInfos user, final List<JsonObject> sources) {
         return toMessage(sources, e -> {
-            final ExplorerMessage message = ExplorerMessage.upsert(getParentId(e), user, isForSearch()).withType(getApplication(), getResourceType(), getEntityType());
+            final ExplorerMessage message = ExplorerMessage.upsert(
+                    new IdAndVersion(getParentId(e), getVersion(e)), user, isForSearch(),
+                    getApplication(), getResourceType(), getEntityType());
             return message;
         }).compose(messages -> {
             return getCommunication().pushMessage(messages);
@@ -140,9 +154,12 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
         final ExplorerStream<JsonObject> stream = new ExplorerStream<>(reindexBatchSize, bulk -> {
             return toMessage(bulk, e -> {
                 final String id = getParentId(e);
-                final UserInfos user = getCreatorForModel(e);
-                final ExplorerMessage mess = ExplorerMessage.upsert(id, user, isForSearch())
-                        .withType(getApplication(), parent.getResourceType(), getResourceType())
+                final UserInfos user = getCreatorForModel(e).orElseGet(() -> {
+                    log.error("Could not found creator for subresource "+getApplication()+ " with id : "+id);
+                    return new UserInfos();
+                });
+                final ExplorerMessage mess = ExplorerMessage.upsert(new IdAndVersion(id, now), user, isForSearch(),
+                                getApplication(), parent.getResourceType(), getEntityType())
                         .withVersion(now);
                 return mess;
             })
@@ -161,11 +178,14 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
 
     protected abstract String getParentId(final JsonObject source);
 
-    protected abstract UserInfos getCreatorForModel(final JsonObject json);
+    protected abstract Optional<UserInfos> getCreatorForModel(final JsonObject json);
+
+    protected abstract Date getCreatedAtForModel(final JsonObject json);
 
     protected Future<ExplorerMessage> toMessage(final ExplorerMessage message, final JsonObject source) {
         message.withType(getApplication(), getResourceType(), getEntityType());
         message.withVersion(source.getLong("version"));
+        //dont set creator and createdat (parent resource is responsible of setting it)
         return doToMessage(message, source);
     }
 
@@ -176,8 +196,10 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
 
     public void start() {
         final String idUpdate = IExplorerPlugin.addressForIngestStateUpdate(getApplication(), getEntityType());
-        this.listenerIngestJobUpdate = parent.communication.listen(idUpdate, rawMessage -> {
-            onJobStateUpdatedMessageReceived(rawMessage.body().mapTo(IngestJobStateUpdateMessage.class));
+        this.listenerIngestJobUpdate = parent.communication.listenForAcks(idUpdate, messages -> {
+            onJobStateUpdatedMessageReceived(messages)
+                .onSuccess(e -> log.debug("Update successul of " + messages.size() + " messages"))
+                .onFailure(th -> log.error("Update error of " + messages, th));
         });
     }
 
@@ -187,5 +209,9 @@ public abstract class ExplorerSubResource implements IExplorerSubResource {
             this.listenerIngestJobUpdate.apply(null);
         }
         this.listenerIngestJobUpdate = null;
+    }
+
+    private long getVersion(final JsonObject source) {
+        return source.getLong("version");
     }
 }
