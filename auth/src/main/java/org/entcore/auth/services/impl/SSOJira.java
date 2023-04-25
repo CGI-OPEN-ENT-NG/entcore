@@ -7,6 +7,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.entcore.common.neo4j.Neo4j;
 import org.entcore.common.neo4j.Neo4jResult;
+import org.entcore.common.user.UserUtils;
 import org.opensaml.saml2.core.Assertion;
 
 public class SSOJira extends AbstractSSOProvider {
@@ -32,7 +33,15 @@ public class SSOJira extends AbstractSSOProvider {
             addingGroups(user, "structures", result);
             addingGroups(user, "academies", result);
 
-            handler.handle(new Either.Right<>(result));
+            UserUtils.getUserInfos(eb, userId, userInfo -> {
+                String userType = userInfo.getType();
+                if (userType != null && (userInfo.isADML())) {
+                    result.add(new JsonObject().put("group", "jira-administrateur-ent"));
+                } else if (userType != null && (userType.equals("Teacher") || userType.equals("Personnel"))) {
+                    result.add(new JsonObject().put("group", "jira-personnel-ent"));
+                }
+                handler.handle(new Either.Right<>(result));
+            });
         }));
     }
 
