@@ -6,10 +6,10 @@ import {Data} from '@angular/router';
 import {OdeComponent} from 'ngx-ode-core';
 import {GroupModel} from '../../core/store/models/group.model';
 import {NotifyService} from '../../core/services/notify.service';
-import { RecallMail } from '../../core/store/models/recallmail.model';
+import { RecallMail } from './recallmail.model';
 import {switchMap} from 'rxjs/operators';
 import {BundlesService} from 'ngx-ode-sijil';
-import { ActionStatus } from 'src/app/core/enum/action-status.enum';
+import { ActionStatus } from 'src/app/management/zimbra/enum/action-status.enum';
 
 @Component({
     selector: 'ode-zimbra',

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { ZimbraService } from './zimbra.service';
-import { RecallMail } from '../../core/store/models/recallmail.model';
+import { RecallMail } from './recallmail.model';
 
 describe('ZimbraService', () => {
   let service: ZimbraService;

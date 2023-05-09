@@ -1,4 +1,4 @@
-import { ActionStatus } from './../../enum/action-status.enum';
+import { ActionStatus } from './enum/action-status.enum';
 interface IMessage {
     mailId: string;
     subject: string;

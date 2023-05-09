@@ -3,7 +3,7 @@ import {Observable} from 'rxjs';
 import {HttpClient} from '@angular/common/http';
 import {GroupModel} from '../../core/store/models/group.model';
 import {RoleModel} from '../../core/store/models/role.model';
-import {RecallMail} from '../../core/store/models/recallmail.model';
+import {RecallMail} from './recallmail.model';
 
 @Injectable({
   providedIn: 'root'
