@@ -1,4 +1,4 @@
-
+import { ActionStatus } from './../../enum/action-status.enum';
 interface IMessage {
     mailId: string;
     subject: string;
@@ -29,17 +29,16 @@ export class RecallMail {
     action: IAction;
 }
 
-export function getActionStatus(action: IAction): string {
+export function getActionStatus(action: IAction): ActionStatus {
     let tasks: ITask = action.tasks;
     if (!action.approved) {
-        return "WAITING";
+        return ActionStatus.WAITING;
     }
     if (tasks.finished === tasks.total) {
-        return "REMOVED";
+        return ActionStatus.REMOVED;
     } else if (tasks.error === 0) {
-        return "PROGRESS";
+        return ActionStatus.PROGRESS;
     } else {
-        return "ERROR";
+        return ActionStatus.ERROR;
     }
 }
-
