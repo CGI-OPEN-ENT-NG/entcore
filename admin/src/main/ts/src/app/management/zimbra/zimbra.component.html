@@ -90,12 +90,9 @@
                   <br>
                 </td>
                 <td> 
-                    <span *ngIf="recalledMail.status == 'WAITING'">
-                        {{recalledMail.action.tasks.total }} {{getNumberMailToRecallMessage(recalledMail)}}
-                    </span>
-                    <span *ngIf="recalledMail.status != 'WAITING'">
-                        {{recalledMail.action.tasks.finished }} / {{recalledMail.action.tasks.total }}
-                    </span>                     
+                    <span>
+                        {{ getProgressionMessageDependingOnRecalls(recalledMail) }}
+                    </span>                   
                 </td>
                 <td [title]="('management.zimbra.return.tooltip.remove' | translate)"
                     (click)="openDeleteLightBox(recalledMail)">

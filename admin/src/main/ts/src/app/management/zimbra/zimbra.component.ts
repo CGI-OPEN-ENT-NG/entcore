@@ -9,6 +9,7 @@ import {NotifyService} from '../../core/services/notify.service';
 import {getActionStatus, RecallMail as RecallMail} from '../../core/store/models/recallmail.model';
 import {switchMap} from 'rxjs/operators';
 import {BundlesService} from 'ngx-ode-sijil';
+import { ActionStatus } from 'src/app/core/enum/action-status.enum';
 
 @Component({
     selector: 'ode-zimbra',
@@ -226,8 +227,12 @@ export class ZimbraComponent extends OdeComponent implements OnInit {
         });
     }
 
-    getNumberMailToRecallMessage(recallMail: RecallMail) {
-        return this.bundles.translate('management.zimbra.recall.number.message' + (recallMail.action.tasks.total > 1 ? ".plural" : ""));
+    getProgressionMessageDependingOnRecalls(recallMail: RecallMail) {
+        if (recallMail.status == ActionStatus.WAITING) {
+            return recallMail.action.tasks.total.toString() + " " + this.bundles.translate('management.zimbra.recall.number.message' + (recallMail.action.tasks.total > 1 ? ".plural" : ""));
+        } else {
+            return recallMail.action.tasks.finished.toString() + " / " + recallMail.action.tasks.total.toString();
+        }
     }
 
     /**
