@@ -27,18 +27,18 @@ export class RecallMail {
     statutDisplayed?: string;
     status: string;
     action: IAction;
-}
 
-export function getActionStatus(action: IAction): ActionStatus {
-    let tasks: ITask = action.tasks;
-    if (!action.approved) {
-        return ActionStatus.WAITING;
-    }
-    if (tasks.finished === tasks.total) {
-        return ActionStatus.REMOVED;
-    } else if (tasks.error === 0) {
-        return ActionStatus.PROGRESS;
-    } else {
-        return ActionStatus.ERROR;
+    static getActionStatus(action: IAction): ActionStatus {
+        let tasks: ITask = action.tasks;
+        if (!action.approved) {
+            return ActionStatus.WAITING;
+        }
+        if (tasks.finished === tasks.total) {
+            return ActionStatus.REMOVED;
+        } else if (tasks.error === 0) {
+            return ActionStatus.PROGRESS;
+        } else {
+            return ActionStatus.ERROR;
+        }
     }
 }

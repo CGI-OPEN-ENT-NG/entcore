@@ -6,7 +6,7 @@ import {Data} from '@angular/router';
 import {OdeComponent} from 'ngx-ode-core';
 import {GroupModel} from '../../core/store/models/group.model';
 import {NotifyService} from '../../core/services/notify.service';
-import {getActionStatus, RecallMail as RecallMail} from '../../core/store/models/recallmail.model';
+import { RecallMail } from '../../core/store/models/recallmail.model';
 import {switchMap} from 'rxjs/operators';
 import {BundlesService} from 'ngx-ode-sijil';
 import { ActionStatus } from 'src/app/core/enum/action-status.enum';
@@ -148,7 +148,7 @@ export class ZimbraComponent extends OdeComponent implements OnInit {
                 this.recalledMails = Array.from(recalledMails).sort((a, b) => b.action.date - a.action.date);
                 this.recalledMails.forEach(mail => {
                     this.checkboxesMail[mail.recallMailId] = false;
-                    let status = getActionStatus(mail.action);
+                    let status = RecallMail.getActionStatus(mail.action);
                     mail.statutDisplayed = this.bundles.translate('management.zimbra.return.statut.' + status);
                     mail.status = status;
                 });
