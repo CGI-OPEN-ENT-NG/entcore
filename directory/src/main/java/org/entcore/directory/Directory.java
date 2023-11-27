@@ -205,7 +205,10 @@ public class Directory extends BaseServer {
 			remoteUserController.setRemoteUserService(remoteUserService);
 			addController(remoteUserController);
 		}
-
 	}
 
+	@Override
+	public void stop() {
+		log.info(String.format("[Directory@%s::stop] Verticle Directory stopped.", this.getClass().getSimpleName()));
+	}
 }
