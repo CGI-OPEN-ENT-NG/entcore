@@ -206,6 +206,8 @@ public class Directory extends BaseServer {
 			addController(remoteUserController);
 		}
 
+		StartAndStop startAndStop = new StartAndStop();
+		vertx.deployVerticle(startAndStop, startAndStop.registerId());
 	}
 
 }
