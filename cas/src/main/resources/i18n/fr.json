@@ -69,8 +69,8 @@
   "IkigaiRegisteredService.description": "Service CAS spécifique pour Ikigai, le service Ikigai utilise le login comme attribut principal.",
   "WebGesrestRegisteredService.name": "Web Gerest",
   "WebGesrestRegisteredService.description": "Service CAS 3.0 spécifique pour Web Gerest, le service Web Gerest utilise l'identifiant externe sans préfixe académique comme attribut principal.",
+  "TurboselfParentRegisteredService.name": "Turboself Parent",
+  "TurboselfParentRegisteredService.description": "Réponse CAS Turboself pour les Parents",
   "TurboselfPersonnelRegisteredService.name": "Turboself Personnel",
   "TurboselfPersonnelRegisteredService.description": "Réponse CAS pour Turboself pour le Personnel"
-  "TurboselfParentRegisteredService.name": "Turboself Parent",
-  "TurboselfParentRegisteredService.description": "Service CAS 3.0 spécifique pour Turboself pour les Parents, le service Turboself pour les Parents utilise l'identifiant externe sans préfixe académique comme attribut principal."
-}
+  }
