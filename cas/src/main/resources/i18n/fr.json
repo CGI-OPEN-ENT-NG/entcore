@@ -71,4 +71,8 @@
   "WebGesrestRegisteredService.description": "Service CAS 3.0 spécifique pour Web Gerest, le service Web Gerest utilise l'identifiant externe sans préfixe académique comme attribut principal.",
   "TurboselfPersonnelRegisteredService.name": "Turboself Personnel",
   "TurboselfPersonnelRegisteredService.description": "Service CAS 3.0 spécifique pour Turboself pour le Personnel, le service Turboself pour le Personnel utilise l'identifiant externe sans préfixe académique comme attribut principal."
+  "WebGesrestRegisteredService.description": "Service CAS 3.0 spécifique pour Web Gerest, le service Web Gerest utilise l'identifiant externe sans préfixe académique comme attribut principal.",
+  "TurboselfParentRegisteredService.name": "Turboself Parent",
+  "TurboselfParentRegisteredService.description": "Service CAS 3.0 spécifique pour Turboself pour les Parents, le service Turboself pour les Parents utilise l'identifiant externe sans préfixe académique comme attribut principal."
+
 }
