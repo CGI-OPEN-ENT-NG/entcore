@@ -182,6 +182,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 
 	@Override
 	public void handle(Message<JsonObject> message) {
+		logger.info("SamlValidator : début handle ");
 		final String action = message.body().getString("action", "");
 		final String response = message.body().getString("response");
 		final String idp = message.body().getString("IDP");
@@ -194,6 +195,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 		try {
 			switch (action) {
 			case "generate-authn-request":
+				logger.info("SamlValidator cas : generate-authn-request ");
 				String sp = message.body().getString("SP");
 				String acs = message.body().getString("acs");
 				boolean sign = message.body().getBoolean("AuthnRequestsSigned", false);
@@ -205,6 +207,7 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 				}
 				break;
 			case "generate-saml-response":
+				logger.info("SamlValidator cas : generate-saml-response ");
 				String serviceProvider = message.body().getString("SP");
 				String userId = message.body().getString("userId");
 				String nameid = message.body().getString("nameid");
@@ -215,12 +218,15 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 				generateSAMLResponse(serviceProvider, authNRequestId, userId, nameid, host, url, message);
 				break;
 			case "validate-signature":
+				logger.info("SamlValidator cas : validate-signature");
 				sendOK(message, new JsonObject().put("valid", validateSignature(response)));
 				break;
 			case "decrypt-assertion":
+				logger.info("SamlValidator cas : decrypt-assertion");
 				sendOK(message, new JsonObject().put("assertion", decryptAssertion(response)));
 				break;
 			case "validate-signature-decrypt":
+				logger.info("SamlValidator cas : validate-signature-decrypt");
 				final JsonObject res = new JsonObject();
 				if (validateSignature(response)) {
 					res.put("valid", true).put("assertion", decryptAssertion(response));
@@ -230,11 +236,13 @@ public class SamlValidator extends BusModBase implements Handler<Message<JsonObj
 				sendOK(message, res);
 				break;
 			case "generate-slo-request":
+				logger.info("SamlValidator cas : generate-slo-request");
 				String sessionIndex = message.body().getString("SessionIndex");
 				String nameID = message.body().getString("NameID");
 				sendOK(message, new JsonObject().put("slo", generateSloRequest(nameID, sessionIndex, idp)));
 				break;
 			case "soap-slo":
+				logger.info("SamlValidator cas : soap-slo");
 				String sessionId = message.body().getString("sessionId");
 				soapSlo(sessionId, arSaopSlo -> {
 					if (arSaopSlo.succeeded()) {
