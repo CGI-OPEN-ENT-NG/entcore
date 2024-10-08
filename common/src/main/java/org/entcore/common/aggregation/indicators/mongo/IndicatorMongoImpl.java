@@ -226,6 +226,8 @@ public class IndicatorMongoImpl extends Indicator{
 		//Customize the request if needed
 		customizeGroupBy(groupBy);
 		customizePipeline(pipeline);
+log.info("executeAggregationQuery ligne229 pipeline : " + pipeline);
+		log.info("executeAggregationQuery ligne230 aggregation : " + aggregation);
 
 		mongo.command(aggregation.toString(), new Handler<Message<JsonObject>>() {
 			@Override
@@ -233,6 +235,7 @@ public class IndicatorMongoImpl extends Indicator{
 				if ("ok".equals(message.body().getString("status")) && message.body().getJsonObject("result", new JsonObject()).getInteger("ok") == 1){
 					JsonArray result = message.body().getJsonObject("result", new JsonObject())
 							.getJsonObject("cursor", new JsonObject()).getJsonArray("firstBatch");
+					log.info("executeAggregationQuery ligne236 result : " + result );
 					writeStats(result, group, finalHandler);
 				} else {
 					String groupstr = group == null ? "Global" : group.toString();
@@ -246,6 +249,7 @@ public class IndicatorMongoImpl extends Indicator{
 		//Recurse
 		if(group != null)
 			for(IndicatorGroup child : group.getChildren()){
+				log.info("ligne249 childGroup : " + group );
 				executeAggregationQuery(child, finalHandler);
 			}
 	}
@@ -271,7 +275,9 @@ public class IndicatorMongoImpl extends Indicator{
 
 		final AtomicInteger totalCalls = new AtomicInteger(1);
 		for(IndicatorGroup group: groups){
+			log.info("ligne274 IndicatorMongoImpl group.getTotalChildren : " + group.getTotalChildren());
 			totalCalls.addAndGet(group.getTotalChildren());
+			log.info("ligne276 IndicatorMongoImpl totalCalls : " + totalCalls.get());
 		}
 
 		final Handler<JsonObject> finalHandler = new Handler<JsonObject>(){
@@ -289,6 +295,7 @@ public class IndicatorMongoImpl extends Indicator{
 
 		//Process for each registered group
 		for(IndicatorGroup group : groups){
+			log.info("ligne 294 group : " + group);
 			executeAggregationQuery(group, finalHandler);
 		}
 
