@@ -145,8 +145,9 @@ public class IndicatorMongoImpl extends Indicator{
 					criteriaQuery.and(g.getKey()+"_id").is(result.getJsonObject("_id").getString(g.getKey()));
 					g = g.getParent();
 				}
-			}
 
+			}
+			log.info("[IndicatorMongoImpl] method writeStats result : " + result);
 			//Perform write action
 			writeAction(criteriaQuery, result.getInteger("count"), synchroHandler);
 		}
