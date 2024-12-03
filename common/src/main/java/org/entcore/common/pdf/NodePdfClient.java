@@ -249,6 +249,7 @@ public class NodePdfClient implements PdfGenerator {
 		buffer.appendString("--" + boundary + "--\r\n");
     final PdfMetricsContext context = metricsRecorder.onPdfGenerationStart(PdfMetricsRecorder.TaskKind.Preview, PdfMetricsRecorder.Content.fromBuffer(file), kind);
 		client.request(new RequestOptions()
+				.setMethod(HttpMethod.POST)
 				.setURI("/convert/pdf?kind="+kind.name())
 				.addHeader("Authorization", authHeader)
 				.addHeader("Content-Type","multipart/form-data; boundary=" + boundary))
