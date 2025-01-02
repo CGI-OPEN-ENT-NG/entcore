@@ -70,6 +70,7 @@ if [ "$BRANCH_NAME" = "" ]; then
   exit -1
 fi
 
+BRANCH_NAME="dev"
 echo "======================"
 echo "BRANCH_NAME = $BRANCH_NAME"
 echo "======================"
