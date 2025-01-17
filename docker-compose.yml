@@ -17,6 +17,7 @@ services:
       - ~/.npm:/.npm
       - ../recette:/home/node/recette # TODO : rendre générique pour appliquer à tous les springboards
       - ../infra-front:/home/node/infra-front
+      - ~/.npmrc:/.npmrc
 
   node16:
     image: opendigitaleducation/node:16-alpine-pnpm
@@ -26,6 +27,7 @@ services:
       - ./admin:/home/node/base
       - ~/.npm:/.npm
       - ../recette:/home/node/recette # TODO : rendre générique pour appliquer à tous les springboards
+      - ~/.npmrc:/.npmrc
     environment:
       - NG_CLI_ANALYTICS=false
 
@@ -35,6 +37,7 @@ services:
     volumes:
       - ./tests/src/test/js:/home/node/app
       - ~/.npm:/.npm
+      - ~/.npmrc:/.npmrc
     environment:
       - NG_CLI_ANALYTICS=false
 
@@ -51,4 +54,4 @@ services:
       ADMC_LOGIN: tom.mate
       ADMC_PASSWORD: password
       DEFAULT_PASSWORD: password
-      RECREATE_STRUCTURES: false # Set to 'true' if you want to run the tests on brand new structures
+      RECREATE_STRUCTURES: 'false' # Set to 'true' if you want to run the tests on brand new structures
