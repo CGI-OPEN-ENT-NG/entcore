@@ -28,7 +28,7 @@
     "axios": "0.15.3",
     "core-js": "^2.4.1",
     "entcore": "dev",
-    "entcore-generic-icons": "https://github.com/CGI-OPEN-ENT-NG/generic-icons.git#RDV-50",
+    "entcore-generic-icons": "npm:ode-csslib@dev-cgi",
     "entcore-toolkit": "^1.0.1",
     "humane-js": "^3.2.2",
     "jquery": "^3.2.1",
