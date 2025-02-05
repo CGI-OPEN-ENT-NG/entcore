@@ -19,50 +19,70 @@
 
 package org.entcore.cas.services;
 
+import fr.wseduc.cas.async.Handler;
+import fr.wseduc.cas.entities.AuthCas;
 import fr.wseduc.cas.entities.User;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import org.entcore.common.user.UserUtils;
+import org.entcore.common.user.position.UserPosition;
+import org.entcore.common.user.position.UserPositionService;
+import org.entcore.common.user.position.impl.DefaultUserPositionService;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import java.util.*;
+import java.util.stream.Collectors;
 
-public class OdeRegisteredService extends AbstractCas20ExtensionRegisteredService {
+import static fr.wseduc.webutils.Utils.handlerToAsyncHandler;
+
+public class OdeRegisteredService extends DefaultRegisteredService {
+	UserPositionService userPositionService = new DefaultUserPositionService(eb, false);
 
 	private static final Logger log = LoggerFactory.getLogger(OdeRegisteredService.class);
+	private static final String ACTION = "action";
 	private static final String ATTRIBUTES = "attributes";
+	private static final String CAS_NAMESPACE = "http://www.yale.edu/tp/cas";
+	private static final String CAS_PREFIX = "cas";
+	private static final String DIRECTORY = "directory";
 	private static final String DOLLAR = "$";
 	private static final String EMAIL = "email";
 	private static final String EMAIL_ACADEMY = "emailAcademy";
 	private static final String EMAIL_INTERNAL = "emailInternal";
 	private static final String ENT_PERSON_FUNCTIONS = "ENTPersonFunctions";
 	private static final String ENT_PERSON_MAIL = "ENTPersonMail";
-	private static final String ENT_PERSON_PHONE_NUMBER = "ENTPersonTelephone";
 	private static final String ENT_PERSON_PROFILES = "ENTPersonProfiles";
 	private static final String EXTERNAL_ID = "externalId";
 	private static final String FIRST_NAME = "firstName";
 	private static final String FUNCTION = "function";
-	private static final String HOME_PHONE= "homePhone";
+	private static final String ID = "id";
 	private static final String LAST_NAME = "lastName";
-	private static final String MOBILE = "mobile";
 	private static final String NATIONAL_1 = "National_1";
 	private static final String NATIONAL_2 = "National_2";
 	private static final String NATIONAL_3 = "National_3";
 	private static final String NATIONAL_4 = "National_4";
 	private static final String NOMS = "Nom";
+	private static final String OK = "ok";
 	private static final String PERSONNEL = "Personnel";
 	private static final String PRENOMS = "Prenoms";
 	private static final String RELATIVE = "Relative";
+	private static final String RESULT = "result";
+	private static final String STATUS = "status";
 	private static final String STRUCTURES = "structures";
 	private static final String STUDENT = "Student";
 	private static final String TEACHER = "Teacher";
 	private static final String TYPE = "type";
 	private static final String UAI = "UAI";
 	private static final String UFUNCTIONS = "ufunctions";
-
+	private static final String USERID = "userId";
 
 	@Override
 	public void configure(EventBus eb, Map<String,Object> conf) {
@@ -70,94 +90,173 @@ public class OdeRegisteredService extends AbstractCas20ExtensionRegisteredServic
 		this.directoryAction = "getUserInfos";
 	}
 
-	@Override
-	protected void prepareUserCas20(User user, final String userId, String service, final JsonObject data, final Document doc, final List<Element> additionnalAttributes) {
-		user.setUser(data.getString(principalAttributeName)); // We use UID here
-
-		if (log.isDebugEnabled()){
-			log.debug("START : prepareUserCas20 userId : " + userId);
-		}
-
-		try {
-			if (log.isDebugEnabled()){
-				log.debug("DATA : prepareUserCas20 data : " + data);
-			}
-
-			Element rootAttributes = createElement(ATTRIBUTES, doc);
-
-			// Lastname
-			if (data.containsKey(LAST_NAME)) {
-				rootAttributes.appendChild(createTextElement(NOMS, data.getString(LAST_NAME), doc));
-			}
-
-			// Firstname
-			if (data.containsKey(FIRST_NAME)) {
-				rootAttributes.appendChild(createTextElement(PRENOMS, data.getString(FIRST_NAME), doc));
-			}
-
-			// Functions
-			if (data.containsKey(STRUCTURES) && data.containsKey(UFUNCTIONS)) {
-				JsonArray structures = data.getJsonArray(STRUCTURES, new JsonArray());
-				JsonArray ufunctions = data.getJsonArray(UFUNCTIONS, new JsonArray());
-
-				Map<String, String> structuresExternalIdsUaisMap = buildStructuresExternalIdsUaisMap(structures);
-				Map<String, List<String>> structuresExternalIdsFunctionsMap = buildStructuresExternalIdsFunctionsMap(ufunctions);
-
-				structuresExternalIdsUaisMap.forEach((structureExternalId, structureUai) -> {
-					List<String> functions = structuresExternalIdsFunctionsMap.getOrDefault(structureExternalId, new ArrayList<>());
-
-					Element functionInfos = createElement(ENT_PERSON_FUNCTIONS, doc);
-					functionInfos.appendChild(createTextElement(UAI, structureUai, doc)); // UAI
-					functionInfos.appendChild(createTextElement(FUNCTION, functions.toString(), doc)); // Functions
-
-					rootAttributes.appendChild(functionInfos);
-				});
-			}
-
-			// Email
-			if (data.containsKey(EMAIL_INTERNAL)) {
-				rootAttributes.appendChild(createTextElement(ENT_PERSON_MAIL, data.getString(EMAIL_INTERNAL), doc));
-			} else if (data.containsKey(EMAIL_ACADEMY)) {
-				rootAttributes.appendChild(createTextElement(ENT_PERSON_MAIL, data.getString(EMAIL_ACADEMY), doc));
-			} else if (data.containsKey(EMAIL)) {
-				rootAttributes.appendChild(createTextElement(ENT_PERSON_MAIL, data.getString(EMAIL), doc));
-			}
-
-			// Profile
-			switch(data.getString(TYPE)) {
-				case STUDENT :
-					rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_1, doc));
-					break;
-				case RELATIVE :
-					rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_2, doc));
-					break;
-				case TEACHER :
-					rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_3, doc));
-					break;
-				case PERSONNEL :
-					rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_4, doc));
-					break;
-			}
-
-			additionnalAttributes.add(rootAttributes);
-
-		} catch (Exception e) {
-			log.error("Failed to transform User for ODE", e);
-		}
+	protected Element createTextElement(String name, String value, Document doc) {
+		Element element = doc.createElementNS(CAS_NAMESPACE, CAS_PREFIX + ":" + name);
+		element.setTextContent(value);
+		return element;
 	}
 
-	private Map<String, String> buildStructuresExternalIdsUaisMap(JsonArray structures) {
-		Map<String, String> structuresExternalIdsUaisMap = new HashMap<>();
+	protected Element createElement(String name, Document doc) {
+		Element element = doc.createElementNS(CAS_NAMESPACE, CAS_PREFIX + ":" + name);
+		return element;
+	}
+
+	@Override
+	public void getUser(final AuthCas authCas, final String service, final Handler<User> userHandler) {
+		final String userId = authCas.getUser();
+		JsonObject jo = new JsonObject();
+		jo.put(ACTION, directoryAction).put(USERID, userId);
+		eb.request(DIRECTORY, jo, handlerToAsyncHandler(event -> {
+			JsonObject res = event.body().getJsonObject(RESULT);
+			log.debug("res : " + res);
+			if (OK.equals(event.body().getString(STATUS)) && res != null) {
+				User user = new User();
+				prepareUserFuture(user, userId, service, res)
+					.onSuccess(v -> {
+						userHandler.handle(user);
+						createStatsEvent(authCas, res, service);
+					})
+					.onFailure(err -> {
+						log.error("[Entcore@OdeRegisteredService::getUser] Failed to prepare user for CAS 2.0", err);
+						userHandler.handle(null);
+					});
+			} else {
+				userHandler.handle(null);
+			}
+		}));
+	}
+
+	protected Future<Void> prepareUserFuture(User user, String userId, String service, JsonObject data) {
+		Promise<Void> promise = Promise.promise();
+
+		try {
+			DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+			DocumentBuilder docBuilder;
+			docBuilder = docFactory.newDocumentBuilder();
+
+			Document doc = docBuilder.newDocument();
+			doc.createAttributeNS(CAS_NAMESPACE, CAS_PREFIX);
+
+			List<Element> additionnalAttributes = new ArrayList<Element>();
+			user.setAdditionnalAttributes(additionnalAttributes);
+
+			prepareUserCas20Future(user, userId, service, data, doc, additionnalAttributes)
+				.onSuccess(v -> promise.complete())
+				.onFailure(err -> {
+					log.error("[Entcore@OdeRegisteredService::prepareUserFuture] Erreur lors de la préparation CAS 2.0", err);
+					promise.fail(err.getMessage());
+				});
+
+		} catch (ParserConfigurationException e) {
+			log.error("[Entcore@OdeRegisteredService::prepareUserFuture] Bad configuration for dom generator", e);
+		}
+
+		return promise.future();
+	}
+
+	protected Future<Void> prepareUserCas20Future(User user, final String userId, String service, final JsonObject data, final Document doc, final List<Element> additionnalAttributes) {
+		Promise<Void> promise = Promise.promise();
+
+		UserUtils.getUserInfos(eb, userId, userInfos -> userPositionService.getUserPositions(userInfos)
+			.onSuccess(positions -> {
+				user.setUser(data.getString(principalAttributeName)); // We use UID here
+
+				if (log.isDebugEnabled()){
+					log.debug("START : prepareUserCas20 userId : " + userId);
+				}
+
+				try {
+					if (log.isDebugEnabled()){
+						log.debug("DATA : prepareUserCas20 data : " + data);
+					}
+
+					Element rootAttributes = createElement(ATTRIBUTES, doc);
+
+					// Lastname
+					if (data.containsKey(LAST_NAME)) {
+						rootAttributes.appendChild(createTextElement(NOMS, data.getString(LAST_NAME), doc));
+					}
+
+					// Firstname
+					if (data.containsKey(FIRST_NAME)) {
+						rootAttributes.appendChild(createTextElement(PRENOMS, data.getString(FIRST_NAME), doc));
+					}
+
+					// Functions
+					if (data.containsKey(STRUCTURES) && data.containsKey(UFUNCTIONS)) {
+						JsonArray structures = data.getJsonArray(STRUCTURES, new JsonArray());
+						JsonArray ufunctions = data.getJsonArray(UFUNCTIONS, new JsonArray());
+
+						Map<String, String> structuresExternalIdsIdsMap = buildMapFromTwoFields(structures, EXTERNAL_ID, ID);
+						Map<String, String> structuresExternalIdsUaisMap = buildMapFromTwoFields(structures, EXTERNAL_ID, UAI);
+						Map<String, List<String>> structuresExternalIdsFunctionsMap = buildStructuresExternalIdsFunctionsMap(ufunctions);
+
+						structuresExternalIdsUaisMap.forEach((structureExternalId, structureUai) -> {
+							List<String> functions = structuresExternalIdsFunctionsMap.getOrDefault(structureExternalId, new ArrayList<>());
+							String structureId = structuresExternalIdsIdsMap.getOrDefault(structureExternalId, null);
+							addPositions(structureId, positions, functions); // Add manual functions for this structure if existing
+
+							Element functionInfos = createElement(ENT_PERSON_FUNCTIONS, doc);
+							functionInfos.appendChild(createTextElement(UAI, structureUai, doc)); // UAI
+							functionInfos.appendChild(createTextElement(FUNCTION, functions.toString(), doc)); // Functions
+
+							rootAttributes.appendChild(functionInfos);
+						});
+					}
+
+					// Email
+					if (data.containsKey(EMAIL_INTERNAL)) {
+						rootAttributes.appendChild(createTextElement(ENT_PERSON_MAIL, data.getString(EMAIL_INTERNAL), doc));
+					} else if (data.containsKey(EMAIL_ACADEMY)) {
+						rootAttributes.appendChild(createTextElement(ENT_PERSON_MAIL, data.getString(EMAIL_ACADEMY), doc));
+					} else if (data.containsKey(EMAIL)) {
+						rootAttributes.appendChild(createTextElement(ENT_PERSON_MAIL, data.getString(EMAIL), doc));
+					}
+
+					// Profile
+					switch(data.getString(TYPE)) {
+						case STUDENT :
+							rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_1, doc));
+							break;
+						case RELATIVE :
+							rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_2, doc));
+							break;
+						case TEACHER :
+							rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_3, doc));
+							break;
+						case PERSONNEL :
+							rootAttributes.appendChild(createTextElement(ENT_PERSON_PROFILES, NATIONAL_4, doc));
+							break;
+					}
+
+					additionnalAttributes.add(rootAttributes);
+					promise.complete();
+				}
+				catch (Exception e) {
+					log.error("[Entcore@OdeRegisteredService::prepareUserCas20Future] Failed to transform User for ODE", e);
+				}
+			})
+			.onFailure(err -> {
+				String errorMessage = "[Entcore@OdeRegisteredService::prepareUserCas20Future] Failed to get positions for user %s : %s";
+				log.error(String.format(errorMessage, userInfos.getUserId(), err.getMessage()));
+				promise.fail(err.getMessage());
+			}));
+
+		return promise.future();
+	}
+
+	private Map<String, String> buildMapFromTwoFields(JsonArray structures, String fieldKey, String fieldValue) {
+		Map<String, String> map = new HashMap<>();
 
 		if (structures != null && !structures.isEmpty()) {
 			structures.stream()
 				.filter(JsonObject.class::isInstance)
 				.map(JsonObject.class::cast)
-				.filter(structure -> structure.containsKey(EXTERNAL_ID) && structure.containsKey(UAI))
-				.forEach(structure -> structuresExternalIdsUaisMap.put(structure.getString(EXTERNAL_ID), structure.getString(UAI)));
+				.filter(structure -> structure.containsKey(fieldKey) && structure.containsKey(fieldValue))
+				.forEach(structure -> map.put(structure.getString(fieldKey), structure.getString(fieldValue)));
 		}
 
-		return structuresExternalIdsUaisMap;
+		return map;
 	}
 
 	private Map<String, List<String>> buildStructuresExternalIdsFunctionsMap(JsonArray functions) {
@@ -182,5 +281,13 @@ public class OdeRegisteredService extends AbstractCas20ExtensionRegisteredServic
 		}
 
 		return structuresExternalIdsFunctionsMap;
+	}
+
+	private void addPositions(String structureId, Set<UserPosition> positions, List<String> functions) {
+		List<String> manualPositions = positions.stream()
+				.filter(position -> position.getStructureId().equals(structureId))
+				.map(UserPosition::getName)
+				.collect(Collectors.toList());
+		functions.addAll(manualPositions);
 	}
 }
