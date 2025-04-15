@@ -43,7 +43,7 @@ import java.util.stream.Collectors;
 
 import static fr.wseduc.webutils.Utils.handlerToAsyncHandler;
 
-public class OdeRegisteredService extends DefaultRegisteredService {
+public class OdeRegisteredService extends AbstractCas20ExtensionRegisteredService {
 	UserPositionService userPositionService = new DefaultUserPositionService(eb, false);
 
 	private static final Logger log = LoggerFactory.getLogger(OdeRegisteredService.class);
@@ -90,76 +90,7 @@ public class OdeRegisteredService extends DefaultRegisteredService {
 	private static final String USER_POSITIONS = "userPositions";
 
 	@Override
-	public void configure(EventBus eb, Map<String,Object> conf) {
-		super.configure(eb, conf);
-	}
-
-	protected Element createTextElement(String name, String value, Document doc) {
-		Element element = doc.createElementNS(CAS_NAMESPACE, CAS_PREFIX + ":" + name);
-		element.setTextContent(value);
-		return element;
-	}
-
-	protected Element createElement(String name, Document doc) {
-		Element element = doc.createElementNS(CAS_NAMESPACE, CAS_PREFIX + ":" + name);
-		return element;
-	}
-
-	@Override
-	public void getUser(final AuthCas authCas, final String service, final Handler<User> userHandler) {
-		final String userId = authCas.getUser();
-		JsonObject jo = new JsonObject();
-		jo.put(ACTION, directoryAction).put(USERID, userId);
-		eb.request(DIRECTORY, jo, handlerToAsyncHandler(event -> {
-			JsonObject res = event.body().getJsonObject(RESULT);
-			log.debug("res : " + res);
-			if (OK.equals(event.body().getString(STATUS)) && res != null) {
-				User user = new User();
-				prepareUserFuture(user, userId, service, res)
-					.onSuccess(v -> {
-						userHandler.handle(user);
-						createStatsEvent(authCas, res, service);
-					})
-					.onFailure(err -> {
-						log.error("[Entcore@OdeRegisteredService::getUser] Failed to prepare user for CAS 2.0", err);
-						userHandler.handle(null);
-					});
-			} else {
-				userHandler.handle(null);
-			}
-		}));
-	}
-
-	protected Future<Void> prepareUserFuture(User user, String userId, String service, JsonObject data) {
-		Promise<Void> promise = Promise.promise();
-
-		try {
-			DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
-			DocumentBuilder docBuilder;
-			docBuilder = docFactory.newDocumentBuilder();
-
-			Document doc = docBuilder.newDocument();
-			doc.createAttributeNS(CAS_NAMESPACE, CAS_PREFIX);
-
-			List<Element> additionnalAttributes = new ArrayList<Element>();
-			user.setAdditionnalAttributes(additionnalAttributes);
-
-			prepareUserCas20Future(user, userId, service, data, doc, additionnalAttributes)
-				.onSuccess(v -> promise.complete())
-				.onFailure(err -> {
-					log.error("[Entcore@OdeRegisteredService::prepareUserFuture] Erreur lors de la préparation CAS 2.0", err);
-					promise.fail(err.getMessage());
-				});
-
-		} catch (ParserConfigurationException e) {
-			log.error("[Entcore@OdeRegisteredService::prepareUserFuture] Bad configuration for dom generator", e);
-		}
-
-		return promise.future();
-	}
-
-	protected Future<Void> prepareUserCas20Future(User user, final String userId, String service, final JsonObject data, final Document doc, final List<Element> additionnalAttributes) {
-		Promise<Void> promise = Promise.promise();
+	protected void prepareUserCas20(User user, final String userId, String service, final JsonObject data, final Document doc, final List<Element> additionnalAttributes) {
 		user.setUser(data.getString(principalAttributeName)); // We use UID here
 		data.remove(principalAttributeName);
 
@@ -239,28 +170,10 @@ public class OdeRegisteredService extends DefaultRegisteredService {
 			}
 
 			additionnalAttributes.add(rootAttributes);
-			promise.complete();
 		}
 		catch (Exception e) {
 			log.error("[Entcore@OdeRegisteredService::prepareUserCas20Future] Failed to transform User for ODE", e);
-			promise.fail(e.getMessage());
 		}
-
-		return promise.future();
-	}
-
-	private Map<String, String> buildMapFromTwoFields(JsonArray structures, String fieldKey, String fieldValue) {
-		Map<String, String> map = new HashMap<>();
-
-		if (structures != null && !structures.isEmpty()) {
-			structures.stream()
-				.filter(JsonObject.class::isInstance)
-				.map(JsonObject.class::cast)
-				.filter(structure -> structure.containsKey(fieldKey) && structure.containsKey(fieldValue))
-				.forEach(structure -> map.put(structure.getString(fieldKey), structure.getString(fieldValue)));
-		}
-
-		return map;
 	}
 
 	private Map<String, List<String>> buildStructuresExternalIdsFunctionsMap(JsonArray functions) {
