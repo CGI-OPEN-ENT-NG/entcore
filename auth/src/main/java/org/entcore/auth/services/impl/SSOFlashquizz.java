@@ -26,6 +26,6 @@ public class SSOFlashquizz extends AbstractSSOProvider {
 
     @Override
     public void execute(Assertion assertion, Handler<Either<String, Object>> handler) {
-        handler.handle(new Either.Left<>("[SSOFlashquizz::generate] execute function not available on SSO Flashquizz Implementation"));
+        handler.handle(new Either.Left<>("[SSOFlashquizz::execute] execute function not available on SSO Flashquizz Implementation"));
     }
 }
