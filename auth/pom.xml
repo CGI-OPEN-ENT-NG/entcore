@@ -35,6 +35,7 @@
             <groupId>org.opensaml</groupId>
             <artifactId>opensaml</artifactId>
             <version>2.6.4.1</version>
+            <scope>compile</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.opensaml</groupId>
@@ -50,11 +51,13 @@
             <groupId>org.opensaml</groupId>
             <artifactId>xmltooling</artifactId>
             <version>1.4.4</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.opensaml</groupId>
             <artifactId>openws</artifactId>
             <version>1.5.4</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
