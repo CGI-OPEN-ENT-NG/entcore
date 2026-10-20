@@ -40,6 +40,7 @@ import java.util.List;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import io.vertx.json.schema.*;
+import org.entcore.common.events.EventProfileResolver;
 import org.entcore.common.events.impl.PostgresqlEventStore;
 import org.entcore.common.user.UserInfos;
 import org.entcore.infra.services.EventStoreService;
@@ -147,7 +148,8 @@ public class MongoDbEventStore implements EventStoreService {
 				event.put("ip", ip);
 			}
 		}
-		store(event, handler);
+		EventProfileResolver.applyProfile(user != null ? user.getUserId() : null, event)
+				.onSuccess(e -> store(e, handler));
 	}
 
 	@Override

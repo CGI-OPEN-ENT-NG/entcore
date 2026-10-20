@@ -29,6 +29,7 @@ import fr.wseduc.webutils.Either;
 import fr.wseduc.webutils.http.BaseController;
 import fr.wseduc.webutils.http.Renders;
 import fr.wseduc.webutils.request.RequestUtils;
+import org.entcore.common.events.EventProfileResolver;
 import org.entcore.common.user.UserUtils;
 import org.entcore.common.utils.StringUtils;
 import org.entcore.infra.services.EventStoreService;
@@ -116,7 +117,8 @@ public class EventStoreController extends BaseController {
 							event.put("ip", Renders.getIp(request));
 						}
 
-						eventStoreService.store(event, voidResponseHandler(request));
+						EventProfileResolver.applyProfile(user.getUserId(), event)
+								.onSuccess(e -> eventStoreService.store(e, voidResponseHandler(request)));
 					} else {
 						Renders.badRequest(request, "bad event:"+eventType);
 					}
