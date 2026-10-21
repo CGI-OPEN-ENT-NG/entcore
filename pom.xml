@@ -58,8 +58,8 @@
     </modules>
 
     <properties>
-        <revision>6.15-SNAPSHOT</revision>
-        <entCoreLibsVersion>6.15-SNAPSHOT</entCoreLibsVersion>
+        <revision>6.15.0-campus</revision>
+        <entCoreLibsVersion>6.15.0-campus</entCoreLibsVersion>
         <junitVersion>4.13.2</junitVersion>
         <testContainerVersion>1.19.3</testContainerVersion>
         <modPostgresVersion>2.2-SNAPSHOT</modPostgresVersion>
