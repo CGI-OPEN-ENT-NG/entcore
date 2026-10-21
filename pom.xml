@@ -26,6 +26,11 @@
             <name>m2 Repository</name>
             <url>https://plugins.gradle.org/m2/</url>
         </repository>
+        <repository>
+            <id>cgi-maven-releases</id>
+            <name>CGI Repository</name>
+            <url>https://nexus-pic2.support-ent.fr/repository/cgi-maven-releases/</url>
+        </repository>
     </repositories>
 
     <scm>
