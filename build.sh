@@ -279,6 +279,16 @@ publish() {
   docker compose run --rm  maven mvn $MVN_OPTS -DrepositoryId=ode-$nexusRepository -DskipTests --settings /var/maven/.m2/settings.xml deploy
 }
 
+publishNexus() {
+  version=`docker compose run --rm $USER_OPTION maven mvn $MVN_OPTS help:evaluate -Dexpression=project.version -q -DforceStdout`
+  case "$version" in
+    *SNAPSHOT) export nexusRepository='snapshots' ;;
+    *)         export nexusRepository='releases' ;;
+  esac
+
+  docker compose run --rm  maven mvn $MVN_OPTS -DaltDeploymentRepository=cgi-maven-$nexusRepository::default::https://nexus-pic2.support-ent.fr/repository/cgi-maven-$nexusRepository/ -DskipTests -Dmaven.test.skip=true --settings /var/maven/.m2/settings.xml deploy
+}
+
 image() {
   ./edifice image --project-type=entcore --rebuild=false $EDIFICE_CLI_DEBUG_OPTION
 }
@@ -402,6 +412,9 @@ do
       ;;
     publish)
       publish
+      ;;
+    publishNexus)
+      publishNexus
       ;;
     image)
       image
