@@ -32,8 +32,8 @@
     "typecheck": "tsc -b --noEmit --pretty"
   },
   "dependencies": {
-    "@edifice.io/react": "%packageVersion%",
-    "@edifice.io/bootstrap": "%packageVersion%",
+    "@edifice.io/react": "npm:@cgi-learning-hub/edifice-react@2.6.11-campus",
+    "@edifice.io/bootstrap": "npm:@cgi-learning-hub/edifice-bootstrap@2.6.11-campus",
     "@edifice.io/client": "%packageVersion%",
     "@edifice.io/utilities": "%packageVersion%",
     "@edifice.io/tiptap-extensions": "%packageVersion%",
@@ -86,5 +86,11 @@
   "engines": {
     "node": ">=20"
   },
-  "nx": {}
+  "nx": {},
+  "pnpm": {
+    "overrides": {
+      "@edifice.io/bootstrap": "npm:@cgi-learning-hub/edifice-bootstrap@2.6.11-campus",
+      "@edifice.io/react": "npm:@cgi-learning-hub/edifice-react@2.6.11-campus"
+    }
+  }
 }
